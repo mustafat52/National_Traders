@@ -11,22 +11,21 @@ export function staffPoints(d: Data, staffId: string, month: string) {
 }
 export function vendorLedger(d: Data, vid: string) {
   const v = d.vendors.find((x) => x.id === vid)!;
-  const rows: { date: string; type: string; ref: string; debit: number; credit: number }[] = [];
-  d.purchases.filter((p) => p.vendorId === vid).forEach((p) => rows.push({ date: p.date, type: 'Purchase', ref: p.no, debit: p.total, credit: 0 }));
-  d.payments.filter((p) => p.vendorId === vid).forEach((p) => rows.push({ date: p.date, type: 'Payment (' + p.mode + ')', ref: '-', debit: 0, credit: p.amount }));
-  d.pReturns.filter((p) => p.vendorId === vid).forEach((p) => rows.push({ date: p.date, type: 'Purchase return', ref: '-', debit: 0, credit: p.amount }));
+  const rows: { date: string; kind: 'bill' | 'payment'; type: string; ref: string; debit: number; credit: number }[] = [];
+  d.purchases.filter((p) => p.vendorId === vid).forEach((p) => rows.push({ date: p.date, kind: 'bill', type: 'Bill ' + p.billNo, ref: p.no, debit: p.total, credit: 0 }));
+  d.payments.filter((p) => p.vendorId === vid).forEach((p) => rows.push({ date: p.date, kind: 'payment', type: 'Payment (' + p.mode + ')', ref: '-', debit: 0, credit: p.amount }));
   rows.sort((a, b) => a.date.localeCompare(b.date));
   let bal = v?.opening ?? 0;
   const out = rows.map((r) => ({ ...r, bal: (bal += r.debit - r.credit) }));
   return { rows: out, balance: bal };
 }
 export const vendorBalance = (d: Data, vid: string) => vendorLedger(d, vid).balance;
-/** Ageing: credits (payments + returns) are applied to the oldest charges first. */
+/** Ageing: credits (payments) are applied to the oldest charges first. */
 export function vendorAging(d: Data, vid: string) {
   const v = d.vendors.find((x) => x.id === vid)!;
   const charges = [{ date: new Date(Date.now() - 100 * 86400000).toISOString(), amt: v.opening },
     ...d.purchases.filter((p) => p.vendorId === vid).map((p) => ({ date: p.date, amt: p.total }))].sort((a, b) => a.date.localeCompare(b.date));
-  let credit = d.payments.filter((p) => p.vendorId === vid).reduce((a, p) => a + p.amount, 0) + d.pReturns.filter((p) => p.vendorId === vid).reduce((a, p) => a + p.amount, 0);
+  let credit = d.payments.filter((p) => p.vendorId === vid).reduce((a, p) => a + p.amount, 0);
   const b = [0, 0, 0];
   for (const c of charges) {
     const use = Math.min(credit, c.amt); credit -= use;

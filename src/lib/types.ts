@@ -16,7 +16,6 @@ export interface Vendor { id: string; name: string; phone: string; gst: string; 
 export interface PurchaseLine { pid: string; qty: number[]; price: number; }
 export interface Purchase { id: string; no: string; vendorId: string; date: string; billNo: string; lines: PurchaseLine[]; total: number; }
 export interface VendorPayment { id: string; vendorId: string; date: string; amount: number; mode: string; }
-export interface PurchaseReturn { id: string; vendorId: string; date: string; pid: string; qty: number; loc: number; amount: number; }
 export interface Staff { id: string; name: string; role: 'admin' | 'salesman'; phone: string; }
 export interface Gap { out: string; back?: string; }
 export interface Attendance { id: string; staffId: string; date: string; in: string; out?: string; breaks: { s: string; e?: string }[]; gaps: Gap[]; }
@@ -34,13 +33,14 @@ export interface ReturnRec {
   id: string; no: string; kind: 'sales' | 'damage'; billId: string; date: string; staffId: string;
   lines: ReturnLine[]; refundCash: number; refundOnline: number; pointsReversed: number;
 }
-export interface StockIn { id: string; no: string; date: string; by: string; note: string; lines: { pid: string; qty: number[] }[]; }
+/** purchaseId is set when the delivery came with a vendor bill (that bill is what adds to the vendor's payable). */
+export interface StockIn { id: string; no: string; date: string; by: string; note: string; lines: { pid: string; qty: number[] }[]; purchaseId?: string; }
 export interface Transfer { id: string; date: string; pid: string; from: number; to: number; qty: number; by: string; }
 export interface Adjustment { id: string; date: string; pid: string; loc: number; from: number; to: number; reason: string; by: string; }
 export interface Settings { pointsPer1000: number; repeatDays: number; estimateDays: number; linkDays: number; lateAfter: string; }
 export interface Counters { est: number; quo: number; ret: number; pur: number; sin: number; }
 export interface Data {
-  products: Product[]; vendors: Vendor[]; purchases: Purchase[]; payments: VendorPayment[]; pReturns: PurchaseReturn[];
+  products: Product[]; vendors: Vendor[]; purchases: Purchase[];payments: VendorPayment[];
   staff: Staff[]; attendance: Attendance[]; leaves: Leave[]; customers: Customer[]; bills: Bill[]; returns: ReturnRec[];
   stockIns: StockIn[]; transfers: Transfer[]; adjustments: Adjustment[]; settings: Settings; counters: Counters;
 }

@@ -130,7 +130,7 @@ export function buildSeed(): Data {
   });
 
   return {
-    products, vendors, purchases, payments, pReturns: [], staff, attendance,
+    products, vendors, purchases, payments, staff, attendance,
     leaves: [{ id: 'L1', staffId: 'S2', from: dk(daysAgo(-2)), to: dk(daysAgo(-3)), type: 'Casual', reason: 'Family function', status: 'pending' }],
     customers, bills, returns: [], stockIns: [], transfers: [], adjustments: [],
     settings: { pointsPer1000: 10, repeatDays: 15, estimateDays: 7, linkDays: 60, lateAfter: '10:00' },

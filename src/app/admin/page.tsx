@@ -43,7 +43,7 @@ export default function Dashboard() {
   /* ---------- needs attention ---------- */
   const low = useMemo(() => d.products.filter(isLow), [d.products]);
   const soldOut = low.filter((p) => stockTotal(p) === 0).length;
-  const aging = useMemo(() => d.vendors.map((v) => ({ v, a: vendorAging(d, v.id), bal: vendorBalance(d, v.id) })), [d.vendors, d.purchases, d.payments, d.pReturns]); // eslint-disable-line react-hooks/exhaustive-deps
+  const aging = useMemo(() => d.vendors.map((v) => ({ v, a: vendorAging(d, v.id), bal: vendorBalance(d, v.id) })), [d.vendors, d.purchases, d.payments]); // eslint-disable-line react-hooks/exhaustive-deps
   const overdue = aging.reduce((a, x) => a + x.a[2], 0); const overdueVendors = aging.filter((x) => x.a[2] > 0).length;
   const payable = aging.reduce((a, x) => a + x.bal, 0);
   const pendingLeaves = d.leaves.filter((l) => l.status === 'pending').length;

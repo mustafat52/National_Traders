@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { buildSeed } from './seed';
-import { Attendance, Bill, BillLine, Data, Purchase, PurchaseLine, ReturnRec, Settings, Staff } from './types';
+import { Bill, BillLine, Data, Purchase, ReturnRec, Settings, Staff, Vendor } from './types';
 import { calcPoints, dk, pad, uid } from './rules';
 
 /**
@@ -11,6 +11,8 @@ import { calcPoints, dk, pad, uid } from './rules';
 export interface Session { role: 'admin' | 'staff'; staffId: string; }
 export interface BillDraft { staffId: string; customerId: string; tier: number; lines: BillLine[]; cash: number; online: number; fromEstimate?: string; }
 export interface ConvertDraft { estimateId: string; }
+/** Present when the delivery came with a vendor bill: creates the bill (money owed) and updates purchase prices. */
+export interface StockInBill { vendorId: string; billNo: string; prices: Record<string, number>; }
 
 interface Actions {
   login: (staffId: string) => void;
@@ -27,9 +29,8 @@ interface Actions {
   transfer: (pid: string, from: number, to: number, qty: number) => void;
   addVendor: (v: Omit<Data['vendors'][number], 'id'>) => void;
   addPayment: (vendorId: string, amount: number, mode: string) => void;
-  addPurchase: (vendorId: string, billNo: string, lines: PurchaseLine[]) => void;
-  addStockIn: (note: string, lines: { pid: string; qty: number[] }[]) => void;
-  purchaseReturn: (vendorId: string, pid: string, qty: number, loc: number) => void;
+  updateVendor: (id: string, v: Omit<Vendor, 'id'>) => void;
+  addStockIn: (note: string, lines: { pid: string; qty: number[] }[], bill?: StockInBill) => void;
   upsertCustomer: (phone: string, tier: number) => string;
   saveBill: (kind: 'estimate' | 'quotation', d: BillDraft) => Bill;
   startConvert: (estimateId: string | null) => void;
@@ -100,40 +101,40 @@ export const useStore = create<Store>()(
       /* ---------- vendors & purchases (admin) ---------- */
       addVendor: (v) => set((s) => ({ vendors: [...s.vendors, { ...v, id: uid('V') }] })),
       addPayment: (vendorId, amount, mode) => set((s) => ({ payments: [{ id: uid('VP'), vendorId, date: new Date().toISOString(), amount, mode }, ...s.payments] })),
-      addPurchase: (vendorId, billNo, lines) => set((s) => {
-        const n = s.counters.pur;
-        const total = lines.reduce((a, l) => a + l.price * l.qty.reduce((x, y) => x + y, 0), 0);
-        // Direct-to-shop products always land in Main Shop, whatever the entry says.
-        const pm0 = new Map(s.products.map((p) => [p.id, p]));
-        const norm = lines.map((l) => (pm0.get(l.pid)?.shopOnly ? { ...l, qty: [l.qty.reduce((a, b) => a + b, 0), 0, 0] } : l));
-        const pur: Purchase = { id: uid('P'), no: `PUR-${pad(n)}`, vendorId, date: new Date().toISOString(), billNo, lines: norm, total };
-        const m = new Map(norm.map((l) => [l.pid, l]));
-        return {
-          purchases: [pur, ...s.purchases], counters: { ...s.counters, pur: n + 1 },
-          products: s.products.map((p) => { const l = m.get(p.id); return l ? { ...p, pp: l.price, stock: p.stock.map((q, i) => q + (l.qty[i] || 0)) } : p; }),
-        };
-      }),
-      /** Incoming stock without a vendor bill (goods received, opening stock, godown receipts). Raises stock only. */
-      addStockIn: (note, lines) => set((s) => {
+            updateVendor: (id, v) => set((s) => ({ vendors: s.vendors.map((x) => (x.id === id ? { ...v, id } : x)) })),
+      /**
+       * ONE way to add incoming stock. Without `bill` it only raises stock (opening stock, godown receipts, found stock).
+       * With `bill` it also records the vendor's bill (adds to what we owe) and updates each product's last purchase price.
+       */
+      addStockIn: (note, lines, bill) => set((s) => {
         const pm = new Map(s.products.map((p) => [p.id, p]));
+        // Direct-to-shop products always land in Main Shop, whatever the entry says.
         const clean = lines.map((l) => {
           const sum = l.qty.reduce((a, b) => a + (b || 0), 0);
           return { pid: l.pid, qty: pm.get(l.pid)?.shopOnly ? [sum, 0, 0] : [0, 1, 2].map((i) => l.qty[i] || 0) };
         }).filter((l) => l.qty.some((q) => q > 0));
         if (!clean.length) throw new Error('Enter a quantity for at least one product');
-        const m = new Map(clean.map((l) => [l.pid, l.qty])); const n = s.counters.sin;
+        const now = new Date().toISOString(); const n = s.counters.sin;
+        let purchase: Purchase | undefined;
+        if (bill) {
+          const billNo = bill.billNo.trim();
+          if (!bill.vendorId) throw new Error('Choose the vendor this delivery came from');
+          if (!billNo) throw new Error('Enter the vendor bill number');
+          if (s.purchases.some((p) => p.vendorId === bill.vendorId && p.billNo.toLowerCase() === billNo.toLowerCase()))
+            throw new Error(`Bill ${billNo} from this vendor is already recorded. Check it was not entered before.`);
+          for (const l of clean) if (!((bill.prices[l.pid] ?? 0) > 0)) throw new Error(`Enter the purchase price for "${pm.get(l.pid)!.name}"`);
+          const pl = clean.map((l) => ({ pid: l.pid, qty: l.qty, price: bill.prices[l.pid] }));
+          purchase = { id: uid('P'), no: `PUR-${pad(s.counters.pur)}`, vendorId: bill.vendorId, date: now, billNo, lines: pl, total: pl.reduce((a, l) => a + l.price * l.qty.reduce((x, y) => x + y, 0), 0) };
+        }
+        const m = new Map(clean.map((l) => [l.pid, l.qty]));
         return {
-          stockIns: [{ id: uid('SI'), no: `SIN-${pad(n)}`, date: new Date().toISOString(), by: s.session?.staffId ?? '', note, lines: clean }, ...s.stockIns],
-          counters: { ...s.counters, sin: n + 1 },
-          products: s.products.map((p) => { const q = m.get(p.id); return q ? { ...p, stock: p.stock.map((x, i) => x + q[i]) } : p; }),
-        };
-      }),
-      purchaseReturn: (vendorId, pid, qty, loc) => set((s) => {
-        const p = s.products.find((x) => x.id === pid)!;
-        if (qty <= 0 || p.stock[loc] < qty) throw new Error('Not enough stock at that location');
-        return {
-          products: s.products.map((x) => (x.id === pid ? { ...x, stock: x.stock.map((q, i) => (i === loc ? q - qty : q)) } : x)),
-          pReturns: [{ id: uid('PR'), vendorId, date: new Date().toISOString(), pid, qty, loc, amount: qty * p.pp }, ...s.pReturns],
+          stockIns: [{ id: uid('SI'), no: `SIN-${pad(n)}`, date: now, by: s.session?.staffId ?? '', note, lines: clean, purchaseId: purchase?.id }, ...s.stockIns],
+          purchases: purchase ? [purchase, ...s.purchases] : s.purchases,
+          counters: { ...s.counters, sin: n + 1, pur: purchase ? s.counters.pur + 1 : s.counters.pur },
+          products: s.products.map((p) => {
+            const q = m.get(p.id); if (!q) return p;
+            return { ...p, pp: purchase ? bill!.prices[p.id] : p.pp, stock: p.stock.map((x, i) => x + q[i]) };
+          }),
         };
       }),
 

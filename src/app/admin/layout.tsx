@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ArrowLeftRight, AlertTriangle, Boxes, FileText, LayoutDashboard, LogOut, PackagePlus, Settings, ShoppingCart, Truck, Users, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, AlertTriangle, Boxes, FileText, LayoutDashboard, LogOut, PackagePlus, Settings, Truck, Users, type LucideIcon } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { useGuard } from '@/components/Shell';
 import { cx } from '@/components/ui';
@@ -10,7 +10,7 @@ type Item = [string, string, LucideIcon];
 const GROUPS: { label: string; items: Item[] }[] = [
   { label: '', items: [['/admin', 'Dashboard', LayoutDashboard]] },
   { label: 'Stock', items: [['/admin/products', 'Products & Prices', Boxes], ['/admin/stockin', 'Stock In (Incoming)', PackagePlus], ['/admin/transfers', 'Stock Transfers', ArrowLeftRight], ['/admin/lowstock', 'Low Stock', AlertTriangle]] },
-  { label: 'Buying', items: [['/admin/vendors', 'Vendors & Payables', Truck], ['/admin/purchases', 'Purchases', ShoppingCart]] },
+  { label: 'Buying', items: [['/admin/vendors', 'Vendors & Payables', Truck]] },
   { label: 'Team and reports', items: [['/admin/staff', 'Staff & Attendance', Users], ['/admin/reports', 'Reports', FileText]] },
 ];
 const ALL: Item[] = [...GROUPS.flatMap((g) => g.items), ['/admin/settings', 'Settings', Settings]];

@@ -1,12 +1,15 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, ChevronDown, Download, PackagePlus, Store, X } from 'lucide-react';
+import Link from 'next/link';
+import { CheckCircle2, ChevronDown, Download, PackagePlus, Receipt, Store, Truck, X } from 'lucide-react';
 import { useStore, useProductMap } from '@/lib/store';
-import { LOCS, Product, StockIn as StockInRec } from '@/lib/types';
-import { download, toCsv } from '@/lib/rules';
+import { LOCS, Product, StockIn as StockInRec, TIER_NAMES } from '@/lib/types';
+import { download, fmtDate, money, toCsv } from '@/lib/rules';
+import { vendorBalance } from '@/lib/selectors';
 import { timeAgo } from '@/lib/time';
 import { CountUp } from '@/components/CountUp';
 import { EmojiTile, ProductSearch, productPath } from '@/components/ProductSearch';
+import { Rupee } from '@/components/Rupee';
 import { Stepper } from '@/components/Stepper';
 import { Scanner } from '@/components/ui';
 
@@ -14,18 +17,28 @@ const LOCC = ['#1F6F68', '#7FB5A6', '#C9E0D7'];
 const LOC_TINT = ['bg-sage-bg text-sage-fg', 'bg-sky-bg text-sky-fg', 'bg-lilac-bg text-lilac-fg'];
 const card = 'rounded-[22px] border border-line bg-panel';
 interface L { pid: string; qty: number[] }
+type Source = 'vendor' | 'none';
 
 export default function StockIn() {
-  const { addStockIn, stockIns, staff } = useStore(); const pm = useProductMap();
+  const d = useStore(); const { addStockIn, stockIns, staff, vendors } = d; const pm = useProductMap();
+  const [source, setSource] = useState<Source>('vendor');
+  const [vendorId, setVendorId] = useState(''); const [billNo, setBillNo] = useState('');
+  const [prices, setPrices] = useState<Record<string, number>>({});
   const [note, setNote] = useState(''); const [lines, setLines] = useState<L[]>([]);
-  const [done, setDone] = useState<null | { no: string; units: number; products: number }>(null);
+  const [done, setDone] = useState<null | { no: string; units: number; products: number; owed?: { vendor: string; amount: number; billNo: string } }>(null);
   const [err, setErr] = useState(''); const [scan, setScan] = useState(false); const [focusId, setFocusId] = useState('');
 
-  const add = (p: Product) => { setDone(null); setErr(''); setLines((ls) => (ls.some((x) => x.pid === p.id) ? ls : [...ls, { pid: p.id, qty: [0, 0, 0] }])); setFocusId(p.id); };
-  useEffect(() => { // opened from a product page: /admin/stockin?product=<id>
-    const id = new URLSearchParams(window.location.search).get('product');
-    const p = id ? useStore.getState().products.find((x) => x.id === id) : null; if (p) add(p);
-  }, []);
+  const add = (p: Product) => {
+    setDone(null); setErr('');
+    setLines((ls) => (ls.some((x) => x.pid === p.id) ? ls : [...ls, { pid: p.id, qty: [0, 0, 0] }]));
+    setPrices((pr) => (pr[p.id] ? pr : { ...pr, [p.id]: p.pp }));
+    setFocusId(p.id);
+  };
+  useEffect(() => { // opened from a product page (?product=<id>) or from a vendor page (?vendor=<id>)
+    const q = new URLSearchParams(window.location.search);
+    const v = q.get('vendor'); if (v && useStore.getState().vendors.some((x) => x.id === v)) { setSource('vendor'); setVendorId(v); }
+    const id = q.get('product'); const p = id ? useStore.getState().products.find((x) => x.id === id) : null; if (p) add(p);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (focusId) { document.getElementById(`qty-${focusId}-0`)?.focus(); setFocusId(''); } }, [focusId, lines]);
 
   const setQ = (i: number, k: number, v: number) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, qty: l.qty.map((q, m) => (m === k ? v : q)) } : l)));
@@ -35,28 +48,37 @@ export default function StockIn() {
   const byLoc = useMemo(() => [0, 1, 2].map((k) => lines.reduce((a, l) => a + (l.qty[k] || 0), 0)), [lines]);
   const units = byLoc.reduce((a, b) => a + b, 0);
   const counted = lines.filter((l) => l.qty.some((q) => q > 0)).length;
+  const billTotal = lines.reduce((a, l) => a + (prices[l.pid] || 0) * l.qty.reduce((x, y) => x + y, 0), 0);
+  const vendor = vendors.find((v) => v.id === vendorId);
+  const owedNow = vendor ? vendorBalance(d, vendor.id) : 0;
+  const vendorMode = source === 'vendor';
 
   const save = () => {
     try {
-      addStockIn(note, lines);
-      setDone({ no: useStore.getState().stockIns[0].no, units, products: counted });
-      setLines([]); setNote(''); setErr('');
+      addStockIn(note, lines, vendorMode ? { vendorId, billNo, prices } : undefined);
+      const s = useStore.getState();
+      setDone({ no: s.stockIns[0].no, units, products: counted, owed: vendorMode && vendor ? { vendor: vendor.name, amount: billTotal, billNo: billNo.trim() } : undefined });
+      setLines([]); setNote(''); setBillNo(''); setPrices({}); setErr('');
     } catch (e) { setErr((e as Error).message); }
   };
-  const exportCsv = () => download('stock-in-history.csv', toCsv([['No.', 'Date', 'Note', 'Product', 'SKU', 'Shop', 'Godown 1', 'Godown 2'],
-    ...stockIns.flatMap((r) => r.lines.map((l) => [r.no, new Date(r.date).toLocaleString('en-IN'), r.note, pm.get(l.pid)?.name ?? l.pid, pm.get(l.pid)?.sku ?? '', ...l.qty]))]));
+  const exportCsv = () => download('stock-in-history.csv', toCsv([['No.', 'Date', 'Vendor', 'Vendor bill', 'Note', 'Product', 'SKU', 'Shop', 'Godown 1', 'Godown 2', 'Price'],
+    ...stockIns.flatMap((r) => { const pu = d.purchases.find((x) => x.id === r.purchaseId); const vn = vendors.find((v) => v.id === pu?.vendorId)?.name ?? '';
+      return r.lines.map((l) => [r.no, new Date(r.date).toLocaleString('en-IN'), vn, pu?.billNo ?? '', r.note, pm.get(l.pid)?.name ?? l.pid, pm.get(l.pid)?.sku ?? '', ...l.qty, pu?.lines.find((x) => x.pid === l.pid)?.price ?? '']); })]));
+
+  const pill = (on: boolean) => `flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition ${on ? 'bg-white text-sage-fg shadow-sm' : 'text-steel hover:text-ink'}`;
 
   return (
     <div className="mx-auto max-w-[1280px]">
       <div className="mb-6">
         <h1 className="font-display text-[40px] font-semibold leading-none tracking-tight">Stock In</h1>
-        <p className="mt-1 text-steel">Record goods that just arrived, then choose where each product goes.</p>
+        <p className="mt-1 text-steel">Record goods that just arrived, then choose where each product goes. Add the vendor bill if there is one.</p>
       </div>
 
       {done && (
         <div className="fade-up mb-5 flex flex-wrap items-center gap-3 rounded-2xl bg-sage-bg px-5 py-4 text-sage-fg">
           <CheckCircle2 className="h-6 w-6 shrink-0" />
-          <div className="flex-1"><b>{done.no} saved.</b> {done.units.toLocaleString('en-IN')} units across {done.products} {done.products === 1 ? 'product' : 'products'} are now in stock.</div>
+          <div className="flex-1"><b>{done.no} saved.</b> {done.units.toLocaleString('en-IN')} units across {done.products} {done.products === 1 ? 'product' : 'products'} are now in stock.
+            {done.owed && <> Bill {done.owed.billNo}: <b>{money(done.owed.amount)}</b> added to what you owe {done.owed.vendor}.</>}</div>
           <button onClick={() => setDone(null)} aria-label="Dismiss"><X className="h-5 w-5" /></button>
         </div>
       )}
@@ -79,6 +101,7 @@ export default function StockIn() {
 
           {lines.map((l, i) => {
             const p = pm.get(l.pid)!; const tot = l.qty.reduce((a, b) => a + b, 0);
+            const price = prices[l.pid] || 0; const diff = price - p.pp;
             return (
               <div key={l.pid} className={`${card} fade-up p-5`}>
                 <div className="flex items-start gap-3">
@@ -113,6 +136,22 @@ export default function StockIn() {
                     </div>
                   </>
                 )}
+
+                {vendorMode && (
+                  <div className="mt-4 rounded-2xl bg-paper p-4">
+                    <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+                      <label className="block text-sm"><span className="mb-1 block text-xs font-medium text-steel">Price on the vendor bill, per {p.unit}</span>
+                        <span className="relative block"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-steel">₹</span>
+                          <input type="number" min={0} inputMode="decimal" className="!w-36 !pl-7" value={prices[l.pid] ?? ''} onChange={(e) => setPrices({ ...prices, [l.pid]: +e.target.value })} /></span></label>
+                      <div className="text-sm text-steel">Line amount <Rupee v={price * tot} className="font-display text-xl font-semibold text-ink" /></div>
+                    </div>
+                    {diff !== 0 && price > 0 && (
+                      <div className="mt-3 rounded-xl bg-butter-bg px-3 py-2 text-xs text-butter-fg">
+                        Last price was {money(p.pp)}, now {diff > 0 ? 'up' : 'down'} {money(Math.abs(diff))} ({Math.round((Math.abs(diff) / p.pp) * 100)}%). Margin on the new cost: {TIER_NAMES.map((t, k) => `${t.slice(-1)} ${Math.round(((p.prices[k] - price) / price) * 100)}%`).join(', ')}. You can review selling prices on the product page.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -122,18 +161,46 @@ export default function StockIn() {
         <aside className="lg:col-span-4">
           <div className={`${card} p-5 lg:sticky lg:top-6`}>
             <div className="font-display text-[22px] font-semibold tracking-tight">This delivery</div>
-            <div className="mt-3 flex items-baseline gap-2"><span className="font-display text-[56px] font-semibold leading-none"><CountUp value={units} duration={600} /></span><span className="text-steel">units, {counted} {counted === 1 ? 'product' : 'products'}</span></div>
+
+            <div className="mt-3 flex gap-1 rounded-2xl bg-paper p-1" role="tablist" aria-label="Where did this delivery come from">
+              <button role="tab" aria-selected={vendorMode} className={pill(vendorMode)} onClick={() => setSource('vendor')}><Truck className="h-4 w-4" />From a vendor</button>
+              <button role="tab" aria-selected={!vendorMode} className={pill(!vendorMode)} onClick={() => setSource('none')}>No vendor bill</button>
+            </div>
+
+            {vendorMode ? (
+              <div className="mt-3 space-y-3">
+                <label className="block text-sm"><span className="mb-1 block text-xs font-medium text-steel">Vendor</span>
+                  <select className="w-full" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+                    <option value="">Choose a vendor</option>{vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </select></label>
+                <label className="block text-sm"><span className="mb-1 block text-xs font-medium text-steel">Vendor bill number</span>
+                  <input className="w-full" value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="As printed on their bill" /></label>
+              </div>
+            ) : (
+              <p className="mt-3 rounded-xl bg-paper px-3 py-2.5 text-xs text-steel">For opening stock, goods moved in from elsewhere, or stock found in a count. Nothing is added to what you owe a vendor.</p>
+            )}
+
+            <div className="mt-4 flex items-baseline gap-2"><span className="font-display text-[56px] font-semibold leading-none"><CountUp value={units} duration={600} /></span><span className="text-steel">units, {counted} {counted === 1 ? 'product' : 'products'}</span></div>
             <div className="mt-4 flex h-3 gap-1 overflow-hidden rounded-full bg-paper">{byLoc.map((q, k) => (q > 0 ? <div key={k} className="rounded-full transition-all duration-500" style={{ width: `${(q / units) * 100}%`, background: LOCC[k] }} /> : null))}</div>
             <ul className="mt-3 space-y-2 text-sm">
               {LOCS.map((n, k) => <li key={n} className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-full" style={{ background: LOCC[k] }} /><span className="flex-1 text-steel">{n}</span><b className="font-display text-lg"><CountUp value={byLoc[k]} duration={500} /></b></li>)}
             </ul>
-            <label className="mt-5 block text-sm"><span className="mb-1 block text-xs font-medium text-steel">Note (optional), for example opening stock or godown receipt</span>
-              <input className="w-full" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Where did it come from?" /></label>
+
+            {vendorMode && (
+              <div className="mt-4 rounded-2xl bg-sage-bg/70 p-4 text-sage-fg">
+                <div className="text-xs font-medium">Bill total</div>
+                <Rupee v={billTotal} animate className="font-display text-[34px] font-semibold leading-tight" />
+                {vendor && <div className="mt-1 text-xs">You owe {vendor.name} {owedNow < 0 ? <>nothing, they hold an advance of <b>{money(-owedNow)}</b></> : <><b>{money(owedNow)}</b> now, <b>{money(owedNow + billTotal)}</b> after this bill</>}.</div>}
+              </div>
+            )}
+
+            <label className="mt-4 block text-sm"><span className="mb-1 block text-xs font-medium text-steel">Note (optional)</span>
+              <input className="w-full" value={note} onChange={(e) => setNote(e.target.value)} placeholder={vendorMode ? 'For example, truck number or who received it' : 'Where did it come from?'} /></label>
             {err && <div className="mt-3 rounded-xl bg-blush-bg px-3 py-2 text-sm text-blush-fg">{err}</div>}
             <button disabled={units <= 0} onClick={save} className="mt-4 w-full rounded-2xl bg-brand py-3.5 font-semibold text-white transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-40">
-              {units > 0 ? `Save ${units.toLocaleString('en-IN')} units to stock` : 'Enter a quantity to save'}
+              {units <= 0 ? 'Enter a quantity to save' : vendorMode ? `Save ${units.toLocaleString('en-IN')} units and the bill` : `Save ${units.toLocaleString('en-IN')} units to stock`}
             </button>
-            <p className="mt-3 text-xs text-steel">Stock In only adds stock. For a vendor bill with money owed, use Purchases.</p>
+            <p className="mt-3 text-xs text-steel">{vendorMode ? 'Stock goes up now. The bill amount is added to what you owe the vendor, and each product\u2019s last purchase price is updated.' : 'This only adds stock.'}</p>
           </div>
         </aside>
       </div>
@@ -153,20 +220,26 @@ export default function StockIn() {
 
 function Entry({ r, by }: { r: StockInRec; by: string }) {
   const [open, setOpen] = useState(false); const pm = useProductMap();
+  const { purchases, vendors } = useStore();
+  const pu = r.purchaseId ? purchases.find((x) => x.id === r.purchaseId) : undefined; const vn = pu ? vendors.find((v) => v.id === pu.vendorId) : undefined;
   const tot = [0, 1, 2].map((k) => r.lines.reduce((a, l) => a + l.qty[k], 0)); const units = tot.reduce((a, b) => a + b, 0);
   return (
     <div className={`${card} overflow-hidden`}>
       <button className="flex w-full flex-wrap items-center gap-x-6 gap-y-2 p-4 text-left" onClick={() => setOpen(!open)}>
         <div className="min-w-[10rem]"><div className="font-display text-lg font-semibold">{r.no}</div><div className="text-xs text-steel">{timeAgo(r.date)}{by && `, by ${by}`}</div></div>
-        <div className="min-w-0 flex-1 text-sm text-steel">{r.note || 'No note'}<span className="ml-2 text-ink">{r.lines.length} {r.lines.length === 1 ? 'product' : 'products'}, {units.toLocaleString('en-IN')} units</span></div>
+        <div className="min-w-0 flex-1 text-sm text-steel">
+          {pu && vn ? <span className="mr-2 inline-flex items-center gap-1 rounded-full bg-butter-bg px-2.5 py-0.5 text-xs font-medium text-butter-fg"><Receipt className="h-3.5 w-3.5" />{vn.name}, bill {pu.billNo}, {money(pu.total)}</span> : <span className="mr-2">{r.note || 'No vendor bill'}</span>}
+          <span className="text-ink">{r.lines.length} {r.lines.length === 1 ? 'product' : 'products'}, {units.toLocaleString('en-IN')} units</span></div>
         <div className="flex gap-1.5 text-xs">{LOCS.map((n, k) => (tot[k] > 0 ? <span key={n} className={`rounded-full px-2.5 py-1 font-medium ${LOC_TINT[k]}`}>{n.replace('Main ', '')} {tot[k]}</span> : null))}</div>
         <ChevronDown className={`h-5 w-5 text-steel transition ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <ul className="divide-y divide-line border-t border-line bg-paper/40 px-4">
-          {r.lines.map((l) => { const p = pm.get(l.pid); return (
+          {pu && vn && <li className="flex flex-wrap items-center gap-2 py-2.5 text-sm text-steel">{fmtDate(pu.date)}. <Link href={`/admin/vendors/${vn.id}`} className="font-medium text-brand underline-offset-4 hover:underline">Open {vn.name}</Link>{r.note && <span>Note: {r.note}</span>}</li>}
+          {r.lines.map((l) => { const p = pm.get(l.pid); const pr = pu?.lines.find((x) => x.pid === l.pid)?.price; return (
             <li key={l.pid} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
               {p && <EmojiTile cat={p.cat} size={32} />}<span className="min-w-0 flex-1 truncate font-medium">{p?.name ?? l.pid}</span>
+              {pr !== undefined && <span className="text-xs text-steel">{money(pr)} each</span>}
               <span className="flex gap-1.5 text-xs">{LOCS.map((n, k) => (l.qty[k] > 0 ? <span key={n} className={`rounded-full px-2.5 py-0.5 font-medium ${LOC_TINT[k]}`}>{n.replace('Main ', '')} {l.qty[k]}</span> : null))}</span>
             </li>); })}
         </ul>
