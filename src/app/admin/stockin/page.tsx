@@ -1,0 +1,176 @@
+'use client';
+import { useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, ChevronDown, Download, PackagePlus, Store, X } from 'lucide-react';
+import { useStore, useProductMap } from '@/lib/store';
+import { LOCS, Product, StockIn as StockInRec } from '@/lib/types';
+import { download, toCsv } from '@/lib/rules';
+import { timeAgo } from '@/lib/time';
+import { CountUp } from '@/components/CountUp';
+import { EmojiTile, ProductSearch, productPath } from '@/components/ProductSearch';
+import { Stepper } from '@/components/Stepper';
+import { Scanner } from '@/components/ui';
+
+const LOCC = ['#1F6F68', '#7FB5A6', '#C9E0D7'];
+const LOC_TINT = ['bg-sage-bg text-sage-fg', 'bg-sky-bg text-sky-fg', 'bg-lilac-bg text-lilac-fg'];
+const card = 'rounded-[22px] border border-line bg-panel';
+interface L { pid: string; qty: number[] }
+
+export default function StockIn() {
+  const { addStockIn, stockIns, staff } = useStore(); const pm = useProductMap();
+  const [note, setNote] = useState(''); const [lines, setLines] = useState<L[]>([]);
+  const [done, setDone] = useState<null | { no: string; units: number; products: number }>(null);
+  const [err, setErr] = useState(''); const [scan, setScan] = useState(false); const [focusId, setFocusId] = useState('');
+
+  const add = (p: Product) => { setDone(null); setErr(''); setLines((ls) => (ls.some((x) => x.pid === p.id) ? ls : [...ls, { pid: p.id, qty: [0, 0, 0] }])); setFocusId(p.id); };
+  useEffect(() => { // opened from a product page: /admin/stockin?product=<id>
+    const id = new URLSearchParams(window.location.search).get('product');
+    const p = id ? useStore.getState().products.find((x) => x.id === id) : null; if (p) add(p);
+  }, []);
+  useEffect(() => { if (focusId) { document.getElementById(`qty-${focusId}-0`)?.focus(); setFocusId(''); } }, [focusId, lines]);
+
+  const setQ = (i: number, k: number, v: number) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, qty: l.qty.map((q, m) => (m === k ? v : q)) } : l)));
+  const moveAll = (i: number, k: number) => setLines((ls) => ls.map((l, j) => { if (j !== i) return l; const t = l.qty.reduce((a, b) => a + b, 0); return { ...l, qty: [0, 0, 0].map((_, m) => (m === k ? t : 0)) }; }));
+  const splitEven = (i: number) => setLines((ls) => ls.map((l, j) => { if (j !== i) return l; const t = l.qty.reduce((a, b) => a + b, 0); const base = Math.floor(t / 3); return { ...l, qty: [t - 2 * base, base, base] }; }));
+
+  const byLoc = useMemo(() => [0, 1, 2].map((k) => lines.reduce((a, l) => a + (l.qty[k] || 0), 0)), [lines]);
+  const units = byLoc.reduce((a, b) => a + b, 0);
+  const counted = lines.filter((l) => l.qty.some((q) => q > 0)).length;
+
+  const save = () => {
+    try {
+      addStockIn(note, lines);
+      setDone({ no: useStore.getState().stockIns[0].no, units, products: counted });
+      setLines([]); setNote(''); setErr('');
+    } catch (e) { setErr((e as Error).message); }
+  };
+  const exportCsv = () => download('stock-in-history.csv', toCsv([['No.', 'Date', 'Note', 'Product', 'SKU', 'Shop', 'Godown 1', 'Godown 2'],
+    ...stockIns.flatMap((r) => r.lines.map((l) => [r.no, new Date(r.date).toLocaleString('en-IN'), r.note, pm.get(l.pid)?.name ?? l.pid, pm.get(l.pid)?.sku ?? '', ...l.qty]))]));
+
+  return (
+    <div className="mx-auto max-w-[1280px]">
+      <div className="mb-6">
+        <h1 className="font-display text-[40px] font-semibold leading-none tracking-tight">Stock In</h1>
+        <p className="mt-1 text-steel">Record goods that just arrived, then choose where each product goes.</p>
+      </div>
+
+      {done && (
+        <div className="fade-up mb-5 flex flex-wrap items-center gap-3 rounded-2xl bg-sage-bg px-5 py-4 text-sage-fg">
+          <CheckCircle2 className="h-6 w-6 shrink-0" />
+          <div className="flex-1"><b>{done.no} saved.</b> {done.units.toLocaleString('en-IN')} units across {done.products} {done.products === 1 ? 'product' : 'products'} are now in stock.</div>
+          <button onClick={() => setDone(null)} aria-label="Dismiss"><X className="h-5 w-5" /></button>
+        </div>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-12">
+        {/* what arrived */}
+        <div className="space-y-4 lg:col-span-8">
+          <div className={`${card} p-5`}>
+            <div className="mb-3 font-display text-[22px] font-semibold tracking-tight">What arrived?</div>
+            <ProductSearch onPick={add} onScan={() => setScan(true)} placeholder="Search a product to add it to this delivery" autoFocus />
+          </div>
+
+          {lines.length === 0 && (
+            <div className="flex flex-col items-center rounded-[22px] border-2 border-dashed border-line px-6 py-14 text-center">
+              <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-sage-bg text-sage-fg"><PackagePlus className="h-8 w-8" /></div>
+              <div className="font-display text-xl font-semibold">Nothing added yet</div>
+              <p className="mt-1 max-w-sm text-sm text-steel">Search or scan the products from the delivery. You can add several, then save them together as one entry.</p>
+            </div>
+          )}
+
+          {lines.map((l, i) => {
+            const p = pm.get(l.pid)!; const tot = l.qty.reduce((a, b) => a + b, 0);
+            return (
+              <div key={l.pid} className={`${card} fade-up p-5`}>
+                <div className="flex items-start gap-3">
+                  <EmojiTile cat={p.cat} size={48} />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-display text-xl font-semibold leading-tight">{p.name}</div>
+                    <div className="truncate text-xs text-steel">{productPath(p)}</div>
+                    <div className="mt-1 text-xs text-steel">Now in stock: Shop <b className="text-ink">{p.stock[0]}</b>, Godown 1 <b className="text-ink">{p.stock[1]}</b>, Godown 2 <b className="text-ink">{p.stock[2]}</b></div>
+                  </div>
+                  <button aria-label="Remove" className="rounded-lg p-1.5 text-steel hover:bg-paper" onClick={() => setLines(lines.filter((_, j) => j !== i))}><X className="h-5 w-5" /></button>
+                </div>
+
+                {p.shopOnly ? (
+                  <div className="mt-4 flex flex-wrap items-center gap-4 rounded-2xl bg-sage-bg/60 p-4">
+                    <div><div className="mb-1 text-xs font-medium text-sage-fg">Quantity received</div><Stepper id={`qty-${p.id}-0`} value={l.qty[0]} onChange={(v) => setQ(i, 0, v)} /></div>
+                    <div className="flex items-center gap-2 text-sm text-sage-fg"><Store className="h-5 w-5" />Direct-to-shop product: goes to the Main Shop automatically</div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      {LOCS.map((n, k) => (
+                        <div key={n} className={`rounded-2xl p-3.5 ${LOC_TINT[k]}`}>
+                          <div className="mb-2 text-sm font-medium">{n}</div>
+                          <Stepper id={`qty-${p.id}-${k}`} value={l.qty[k]} onChange={(v) => setQ(i, k, v)} />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                      <span className="mr-1 text-steel">Total <b className="text-ink">{tot.toLocaleString('en-IN')}</b> {p.unit}. Put it all in:</span>
+                      {LOCS.map((n, k) => <button key={n} type="button" disabled={tot === 0} onClick={() => moveAll(i, k)} className="rounded-full border border-line bg-white px-3 py-1 hover:bg-paper disabled:opacity-40">{n}</button>)}
+                      <button type="button" disabled={tot === 0} onClick={() => splitEven(i)} className="rounded-full border border-line bg-white px-3 py-1 hover:bg-paper disabled:opacity-40">Split evenly</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* this delivery */}
+        <aside className="lg:col-span-4">
+          <div className={`${card} p-5 lg:sticky lg:top-6`}>
+            <div className="font-display text-[22px] font-semibold tracking-tight">This delivery</div>
+            <div className="mt-3 flex items-baseline gap-2"><span className="font-display text-[56px] font-semibold leading-none"><CountUp value={units} duration={600} /></span><span className="text-steel">units, {counted} {counted === 1 ? 'product' : 'products'}</span></div>
+            <div className="mt-4 flex h-3 gap-1 overflow-hidden rounded-full bg-paper">{byLoc.map((q, k) => (q > 0 ? <div key={k} className="rounded-full transition-all duration-500" style={{ width: `${(q / units) * 100}%`, background: LOCC[k] }} /> : null))}</div>
+            <ul className="mt-3 space-y-2 text-sm">
+              {LOCS.map((n, k) => <li key={n} className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-full" style={{ background: LOCC[k] }} /><span className="flex-1 text-steel">{n}</span><b className="font-display text-lg"><CountUp value={byLoc[k]} duration={500} /></b></li>)}
+            </ul>
+            <label className="mt-5 block text-sm"><span className="mb-1 block text-xs font-medium text-steel">Note (optional), for example opening stock or godown receipt</span>
+              <input className="w-full" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Where did it come from?" /></label>
+            {err && <div className="mt-3 rounded-xl bg-blush-bg px-3 py-2 text-sm text-blush-fg">{err}</div>}
+            <button disabled={units <= 0} onClick={save} className="mt-4 w-full rounded-2xl bg-brand py-3.5 font-semibold text-white transition hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-40">
+              {units > 0 ? `Save ${units.toLocaleString('en-IN')} units to stock` : 'Enter a quantity to save'}
+            </button>
+            <p className="mt-3 text-xs text-steel">Stock In only adds stock. For a vendor bill with money owed, use Purchases.</p>
+          </div>
+        </aside>
+      </div>
+
+      {/* history */}
+      <div className="mb-3 mt-10 flex items-center justify-between">
+        <h2 className="font-display text-[22px] font-semibold tracking-tight">Recent deliveries</h2>
+        {stockIns.length > 0 && <button onClick={exportCsv} className="flex items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-1.5 text-sm font-medium hover:bg-paper"><Download className="h-4 w-4" />Export CSV</button>}
+      </div>
+      {stockIns.length === 0 && <div className={`${card} p-6 text-steel`}>No deliveries recorded yet. The first one you save will appear here.</div>}
+      <div className="space-y-3">{stockIns.slice(0, 15).map((r) => <Entry key={r.id} r={r} by={staff.find((s) => s.id === r.by)?.name ?? ''} />)}</div>
+      {stockIns.length > 15 && <p className="mt-3 text-sm text-steel">Showing the latest 15 of {stockIns.length}. Export to see all of them.</p>}
+      {scan && <Scanner onClose={() => setScan(false)} onScan={(t) => { const p = useStore.getState().products.find((x) => x.sku === t); setScan(false); if (p) add(p); else setErr(`Unknown QR code: ${t}`); }} />}
+    </div>
+  );
+}
+
+function Entry({ r, by }: { r: StockInRec; by: string }) {
+  const [open, setOpen] = useState(false); const pm = useProductMap();
+  const tot = [0, 1, 2].map((k) => r.lines.reduce((a, l) => a + l.qty[k], 0)); const units = tot.reduce((a, b) => a + b, 0);
+  return (
+    <div className={`${card} overflow-hidden`}>
+      <button className="flex w-full flex-wrap items-center gap-x-6 gap-y-2 p-4 text-left" onClick={() => setOpen(!open)}>
+        <div className="min-w-[10rem]"><div className="font-display text-lg font-semibold">{r.no}</div><div className="text-xs text-steel">{timeAgo(r.date)}{by && `, by ${by}`}</div></div>
+        <div className="min-w-0 flex-1 text-sm text-steel">{r.note || 'No note'}<span className="ml-2 text-ink">{r.lines.length} {r.lines.length === 1 ? 'product' : 'products'}, {units.toLocaleString('en-IN')} units</span></div>
+        <div className="flex gap-1.5 text-xs">{LOCS.map((n, k) => (tot[k] > 0 ? <span key={n} className={`rounded-full px-2.5 py-1 font-medium ${LOC_TINT[k]}`}>{n.replace('Main ', '')} {tot[k]}</span> : null))}</div>
+        <ChevronDown className={`h-5 w-5 text-steel transition ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <ul className="divide-y divide-line border-t border-line bg-paper/40 px-4">
+          {r.lines.map((l) => { const p = pm.get(l.pid); return (
+            <li key={l.pid} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
+              {p && <EmojiTile cat={p.cat} size={32} />}<span className="min-w-0 flex-1 truncate font-medium">{p?.name ?? l.pid}</span>
+              <span className="flex gap-1.5 text-xs">{LOCS.map((n, k) => (l.qty[k] > 0 ? <span key={n} className={`rounded-full px-2.5 py-0.5 font-medium ${LOC_TINT[k]}`}>{n.replace('Main ', '')} {l.qty[k]}</span> : null))}</span>
+            </li>); })}
+        </ul>
+      )}
+    </div>
+  );
+}

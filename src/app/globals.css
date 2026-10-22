@@ -1,0 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Hind:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { @apply bg-paper font-sans text-ink antialiased; }
+input, select, textarea { @apply rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-light focus:ring-1 focus:ring-brand-light; }
+:focus-visible { outline: 2px solid #2F8A82; outline-offset: 2px; }
+
+/* One entrance moment when the dashboard opens: figures count up (see CountUp), bars rise and grow together */
+@keyframes rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.rise { transform-origin: bottom; animation: rise 1s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.fade-up { animation: fadeUp .45s cubic-bezier(.2, .8, .2, 1) both; }
+.grow { transition: width 1.2s cubic-bezier(.2, .8, .2, 1); }
+@media (prefers-reduced-motion: reduce) { .rise, .fade-up { animation: none; } .grow { transition: none; } }
+
+@media print { .no-print { display: none !important; } body { background: white; } }
