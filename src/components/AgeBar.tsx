@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 
 /** The three ageing buckets used everywhere payables are shown. Same order as vendorAging(). */
 export const AGE = [
-  { label: 'Under 30 days', color: '#7FB5A6', chip: 'bg-sage-bg text-sage-fg' },
-  { label: '30 to 60 days', color: '#E3B04B', chip: 'bg-butter-bg text-butter-fg' },
+  { label: 'Under 30 days', color: '#8FA05E', chip: 'bg-sage-bg text-sage-fg' },
+  { label: '30 to 60 days', color: '#E08A3C', chip: 'bg-butter-bg text-butter-fg' },
   { label: 'Over 60 days', color: '#D9705F', chip: 'bg-blush-bg text-blush-fg' },
 ];
 

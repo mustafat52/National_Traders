@@ -1,11 +1,11 @@
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Hind:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500..800&family=Hind:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body { @apply bg-paper font-sans text-ink antialiased; }
-input, select, textarea { @apply rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-light focus:ring-1 focus:ring-brand-light; }
-:focus-visible { outline: 2px solid #2F8A82; outline-offset: 2px; }
+input, select, textarea { @apply rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-gold-light focus:ring-1 focus:ring-gold-light; }
+:focus-visible { outline: 2px solid #D4A941; outline-offset: 2px; }
 
 /* One entrance moment when the dashboard opens: figures count up (see CountUp), bars rise and grow together */
 @keyframes rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
@@ -15,4 +15,12 @@ input, select, textarea { @apply rounded-lg border border-slate-300 bg-white px-
 .grow { transition: width 1.2s cubic-bezier(.2, .8, .2, 1); }
 @media (prefers-reduced-motion: reduce) { .rise, .fade-up { animation: none; } .grow { transition: none; } }
 
-@media print { .no-print { display: none !important; } body { background: white; } }
+@media print { .no-print { display: none !important; } body { background: white; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+
+/* Playfair Display defaults to old-style figures; money and counts must line up, so use lining figures */
+.font-display { font-feature-settings: 'lnum' 1; }
+/* slim dark scrollbar for the black sidebar */
+.nav-scroll { scrollbar-width: thin; scrollbar-color: #3A332A transparent; }
+.nav-scroll::-webkit-scrollbar { width: 6px; }
+.nav-scroll::-webkit-scrollbar-thumb { background: #3A332A; border-radius: 6px; }
+.nav-scroll::-webkit-scrollbar-track { background: transparent; }

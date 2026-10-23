@@ -99,7 +99,7 @@ export default function Transfers() {
                     {avail > 0 && <button onClick={() => setQty(avail)} className="rounded-full border border-line bg-white px-3.5 py-1.5 font-medium hover:bg-paper">All {avail}</button>}
                   </div>
                 </div>
-                {avail > 1 && <input type="range" min={1} max={avail} value={Math.min(Math.max(qty, 1), avail)} onChange={(e) => setQty(+e.target.value)} className="mt-4 w-full cursor-pointer !border-0 !bg-transparent !p-0 accent-[#1F6F68]" aria-label="Quantity" />}
+                {avail > 1 && <input type="range" min={1} max={avail} value={Math.min(Math.max(qty, 1), avail)} onChange={(e) => setQty(+e.target.value)} className="mt-4 w-full cursor-pointer !border-0 !bg-transparent !p-0 accent-[#B8892B]" aria-label="Quantity" />}
 
                 <div className="mt-5 text-sm font-medium text-steel">After this move</div>
                 <div className="mt-2 grid grid-cols-3 gap-3">

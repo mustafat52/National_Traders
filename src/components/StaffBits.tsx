@@ -5,8 +5,8 @@ import { Staff } from '@/lib/types';
 
 /** Small building blocks shared by the Staff, Leaves and Payroll screens (soft swatch theme). */
 export const TINTS = [
-  { bg: '#DCEBE3', fg: '#14504A' }, { bg: '#F8EBC4', fg: '#7A5B0C' }, { bg: '#F6DDD7', fg: '#94402F' },
-  { bg: '#DDE9F4', fg: '#2D5E8A' }, { bg: '#E7E3F5', fg: '#5A4B9B' },
+  { bg: '#F3E7C6', fg: '#5B430E' }, { bg: '#F8D9B0', fg: '#86440A' }, { bg: '#F6DDD7', fg: '#9A3524' },
+  { bg: '#E1E7EE', fg: '#33506B' }, { bg: '#E8E3EC', fg: '#574767' },
 ];
 export function Avatar({ staff, id, size = 'md' }: { staff: Staff[]; id: string; size?: 'sm' | 'md' | 'lg' }) {
   const i = Math.max(0, staff.findIndex((s) => s.id === id)); const c = TINTS[i % TINTS.length];

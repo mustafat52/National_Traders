@@ -35,12 +35,15 @@ export interface PayFigures {
 /** A salary that has been paid. The figures are frozen at the moment of payment. */
 export interface Payslip extends PayFigures { id: string; no: string; staffId: string; month: string; paidOn: string; mode: string; }
 export interface Customer { id: string; phone: string; name: string; tier: number; }
-export interface BillLine { pid: string; qty: number; price: number; alloc: number[]; }
+/** estPrice is set when the line came from an estimate: the price quoted then (price is the one the owner chose at conversion). */
+export interface BillLine { pid: string; qty: number; price: number; alloc: number[]; estPrice?: number; }
 export interface Bill {
   id: string; no: string; kind: 'estimate' | 'quotation'; code: string; date: string;
   staffId: string; customerId: string; tier: number; lines: BillLine[]; total: number;
   cash: number; online: number; points: number;
   status: 'open' | 'paid' | 'converted'; fromEstimate?: string; validUntil?: string;
+  /** set when the owner converted an estimate: who did it and when. Points go to staffId, the salesman who made the estimate. */
+  convertedBy?: string; convertedAt?: string;
 }
 export interface ReturnLine { pid: string; qty: number; amount: number; pp: number; loc: number; }
 export interface ReturnRec {

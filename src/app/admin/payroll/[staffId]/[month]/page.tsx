@@ -17,7 +17,8 @@ export default function PayslipPage() {
       <div className="no-print mb-4 flex justify-between"><button onClick={() => router.back()} className="flex items-center gap-1.5 text-sm text-steel"><ArrowLeft className="h-4 w-4" />Back</button><button onClick={() => window.print()} className="flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white"><Printer className="h-4 w-4" />Print or save as PDF</button></div>
       <div className="rounded-[22px] border border-line bg-white p-8">
         <div className="flex items-start justify-between border-b border-line pb-4">
-          <div><div className="font-display text-2xl font-semibold">National Traders</div><div className="text-sm text-steel">Hyderabad</div></div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-header.png" alt="National Traders" className="h-20 rounded-lg" />
           <div className="text-right"><div className="font-display text-xl font-semibold">PAYSLIP</div><div className="text-sm text-steel">{monthLabel(month)}</div>{p ? <div className="text-xs text-steel">{p.no}</div> : <div className="text-xs text-butter-fg">Not paid yet (preview)</div>}</div>
         </div>
         <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><div className="text-xs text-steel">Employee</div>{s.name}</div><div><div className="text-xs text-steel">Phone</div>{s.phone}</div>

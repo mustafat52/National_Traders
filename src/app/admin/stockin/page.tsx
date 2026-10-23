@@ -13,7 +13,7 @@ import { Rupee } from '@/components/Rupee';
 import { Stepper } from '@/components/Stepper';
 import { Scanner } from '@/components/ui';
 
-const LOCC = ['#1F6F68', '#7FB5A6', '#C9E0D7'];
+const LOCC = ['#B8892B', '#8FA05E', '#EAD9A3'];
 const LOC_TINT = ['bg-sage-bg text-sage-fg', 'bg-sky-bg text-sky-fg', 'bg-lilac-bg text-lilac-fg'];
 const card = 'rounded-[22px] border border-line bg-panel';
 interface L { pid: string; qty: number[] }

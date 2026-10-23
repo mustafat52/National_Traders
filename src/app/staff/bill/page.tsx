@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, MessageCircle, Minus, Plus, Trash2 } from 'lucide-react';
 import { useStore, useProductMap } from '@/lib/store';
@@ -15,27 +15,11 @@ export default function NewBill() {
   const [lines, setLines] = useState<L[]>([]); const [scan, setScan] = useState(false);
   const [pay, setPay] = useState(false); const [mode, setMode] = useState<'cash' | 'online' | 'split'>('cash'); const [cashPart, setCashPart] = useState(0);
   const [done, setDone] = useState<{ no: string; kind: string; total: number; points: number; code: string } | null>(null);
-  const [fromEst, setFromEst] = useState<string | undefined>(); const [notes, setNotes] = useState<string[]>([]);
   const valid = /^\d{10}$/.test(phone);
   const cust = valid ? d.customers.find((c) => c.phone === phone) : undefined;
   const t = tier ?? cust?.tier ?? null;
   const price = (pid: string) => pm.get(pid)!.prices[t ?? 0];
   const total = lines.reduce((a, l) => a + l.qty * price(l.pid), 0);
-
-  // Converting a saved estimate: load its items with prices refreshed to today's price list.
-  const loaded = useRef(false);
-  useEffect(() => {
-    if (loaded.current) return; loaded.current = true;
-    const c = useStore.getState().convert; if (!c) return;
-    const est = useStore.getState().bills.find((b) => b.id === c.estimateId); useStore.getState().startConvert(null); if (!est) return;
-    const cu = useStore.getState().customers.find((x) => x.id === est.customerId)!;
-    setPhone(cu.phone); setTier(est.tier); setFromEst(est.id);
-    const ns: string[] = []; const ls: L[] = [];
-    est.lines.forEach((l) => { const p = pm.get(l.pid)!; const now = p.prices[est.tier];
-      if (now !== l.price) ns.push(`${p.name}: estimate price ${money(l.price)} → today ${money(now)}`);
-      ls.push({ pid: l.pid, qty: l.qty, alloc: autoAlloc(p, l.qty) }); });
-    setLines(ls); setNotes(ns);
-  }, [pm]);
 
   const add = (p: Product) => setLines((ls) => ls.some((x) => x.pid === p.id) ? ls : [...ls, { pid: p.id, qty: 1, alloc: autoAlloc(p, 1) }]);
   const setQty = (pid: string, q: number) => setLines((ls) => ls.map((l) => (l.pid === pid ? { ...l, qty: Math.max(1, q), alloc: autoAlloc(pm.get(pid)!, Math.max(1, q)) } : l)));
@@ -49,7 +33,7 @@ export default function NewBill() {
       const cid = d.upsertCustomer(phone, t!);
       const online = mode === 'cash' ? 0 : mode === 'online' ? total : total - cashPart;
       const cash = kind === 'estimate' ? 0 : mode === 'cash' ? total : mode === 'online' ? 0 : cashPart;
-      const b = d.saveBill(kind, { staffId: me, customerId: cid, tier: t!, fromEstimate: fromEst, cash, online: kind === 'estimate' ? 0 : online,
+      const b = d.saveBill(kind, { staffId: me, customerId: cid, tier: t!, cash, online: kind === 'estimate' ? 0 : online,
         lines: lines.map((l) => ({ pid: l.pid, qty: l.qty, price: price(l.pid), alloc: kind === 'quotation' ? l.alloc : [0, 0, 0] })) });
       setPay(false); setDone({ no: b.no, kind: b.kind, total: b.total, points: b.points, code: b.code });
     } catch (e) { alert((e as Error).message); }
@@ -68,7 +52,7 @@ export default function NewBill() {
         <a href={`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 rounded-lg bg-emerald-600 py-3 font-medium text-white"><MessageCircle className="h-5 w-5" />Send on WhatsApp</a>
         <a href={link} target="_blank" rel="noreferrer" className="block text-sm text-brand underline">Preview customer bill page</a>
         <Btn variant="outline" className="w-full" onClick={() => router.push('/staff')}>Done</Btn>
-        <Btn className="w-full" onClick={() => { setDone(null); setPhone(''); setTier(null); setLines([]); setFromEst(undefined); setNotes([]); }}>Start new bill</Btn>
+        <Btn className="w-full" onClick={() => { setDone(null); setPhone(''); setTier(null); setLines([]); }}>Start new bill</Btn>
       </div>
     );
   }
@@ -81,7 +65,6 @@ export default function NewBill() {
         <div className="grid grid-cols-4 gap-2">{TIER_NAMES.map((n, i) => <button key={n} onClick={() => setTier(i)} className={cx('rounded-lg border py-2 text-sm font-semibold', t === i ? 'border-brand bg-brand text-white' : 'border-slate-300 bg-white')}>{n.slice(-1)}</button>)}</div>
         <p className="text-xs text-slate-400">Category decides the price list. The customer does not see this screen.</p>
       </Card>
-      {notes.length > 0 && <Card className="border-amber-300 bg-amber-50 text-xs text-amber-900"><b>Prices refreshed from the estimate:</b>{notes.map((n) => <div key={n}>{n}</div>)}</Card>}
       <Card className="space-y-3">
         <div className="text-sm font-semibold">2. Items</div>
         <ProductPicker onPick={add} onScan={() => setScan(true)} />

@@ -14,10 +14,10 @@ type Sev = 'out' | 'critical' | 'low';
 interface Item { p: Product; tot: number; ratio: number; sev: Sev; need: number }
 const SEV: Record<Sev, { label: string; bar: string; chip: string; box: string }> = {
   out: { label: 'Sold out', bar: '#D9705F', chip: 'bg-blush-bg text-blush-fg', box: 'bg-blush-bg text-blush-fg' },
-  critical: { label: 'Critical', bar: '#E3B04B', chip: 'bg-butter-bg text-butter-fg', box: 'bg-butter-bg text-butter-fg' },
-  low: { label: 'Running low', bar: '#7FB5A6', chip: 'bg-sage-bg text-sage-fg', box: 'bg-sage-bg text-sage-fg' },
+  critical: { label: 'Critical', bar: '#E08A3C', chip: 'bg-butter-bg text-butter-fg', box: 'bg-butter-bg text-butter-fg' },
+  low: { label: 'Running low', bar: '#8FA05E', chip: 'bg-sage-bg text-sage-fg', box: 'bg-sage-bg text-sage-fg' },
 };
-const LOCC = ['#1F6F68', '#7FB5A6', '#C9E0D7'];
+const LOCC = ['#B8892B', '#8FA05E', '#EAD9A3'];
 const card = 'rounded-[22px] border border-line bg-panel';
 const PAGE = 30;
 const orderText = (v: Vendor | null, list: Item[]) =>

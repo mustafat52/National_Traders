@@ -10,8 +10,8 @@ import { CountUp, GrowBar } from '@/components/CountUp';
 
 /* paint-chip tints used for people, in a fixed order */
 const CHIPS = [
-  { bg: '#DCEBE3', fg: '#14504A' }, { bg: '#F8EBC4', fg: '#7A5B0C' }, { bg: '#DDE9F4', fg: '#2D5E8A' },
-  { bg: '#E7E3F5', fg: '#5A4B9B' }, { bg: '#F6DDD7', fg: '#94402F' }, { bg: '#D6ECEC', fg: '#1D6666' },
+  { bg: '#F3E7C6', fg: '#5B430E' }, { bg: '#F8D9B0', fg: '#86440A' }, { bg: '#E1E7EE', fg: '#33506B' },
+  { bg: '#E8E3EC', fg: '#574767' }, { bg: '#F6DDD7', fg: '#9A3524' }, { bg: '#EFE6CF', fg: '#6B5314' },
 ];
 const short = (n: number) => (n >= 1e7 ? (n / 1e7).toFixed(2) + ' Cr' : n >= 1e5 ? (n / 1e5).toFixed(1) + ' L' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(Math.round(n)));
 const hourLabel = (h: number) => `${h % 12 || 12} ${h < 12 ? 'am' : 'pm'}`;
@@ -52,7 +52,7 @@ export default function Dashboard() {
     { n: low.length, text: 'items are at or below their minimum', sub: soldOut ? `${soldOut} are sold out completely` : 'none are sold out', href: '/admin/lowstock', act: 'Review stock', t: 'bg-butter-bg text-butter-fg' },
     { n: overdueVendors, text: overdueVendors === 1 ? 'vendor is owed for over 60 days' : 'vendors are owed for over 60 days', sub: overdue ? `${money(overdue)} outstanding` : '', href: '/admin/vendors', act: 'Open payables', t: 'bg-blush-bg text-blush-fg' },
     { n: pendingLeaves, text: pendingLeaves === 1 ? 'leave request is waiting' : 'leave requests are waiting', sub: 'Staff are waiting for a yes or no', href: '/admin/leaves', act: 'Decide', t: 'bg-sky-bg text-sky-fg' },
-    { n: expiring, text: expiring === 1 ? 'estimate expires within 2 days' : 'estimates expire within 2 days', sub: 'A call now can turn them into sales', href: '/admin/reports', act: 'See bills', t: 'bg-lilac-bg text-lilac-fg' },
+    { n: expiring, text: expiring === 1 ? 'estimate expires within 2 days' : 'estimates expire within 2 days', sub: 'A call now can turn them into sales', href: '/admin/estimates', act: 'Convert', t: 'bg-lilac-bg text-lilac-fg' },
   ].filter((a) => a.n > 0);
 
   /* ---------- 14 day comparison ---------- */
@@ -70,12 +70,12 @@ export default function Dashboard() {
 
   /* ---------- stock + people ---------- */
   const where = useMemo(() => LOCS.map((name, i) => ({ name, units: d.products.reduce((a, p) => a + p.stock[i], 0), cost: d.products.reduce((a, p) => a + p.stock[i] * p.pp, 0) })), [d.products]);
-  const totalUnits = Math.max(1, where.reduce((a, w) => a + w.units, 0)); const LOCC = ['#1F6F68', '#7FB5A6', '#C9E0D7'];
+  const totalUnits = Math.max(1, where.reduce((a, w) => a + w.units, 0)); const LOCC = ['#B8892B', '#8FA05E', '#EAD9A3'];
   const running = useMemo(() => low.filter((p) => stockTotal(p) > 0).sort((a, b) => stockTotal(a) / Math.max(1, a.min) - stockTotal(b) / Math.max(1, b.min)).slice(0, 6), [low]);
   const floor = d.attendance.filter((a) => a.date === today && !a.out && !a.gaps.some((g) => !g.back)).map((a) => ({ a, onBreak: a.breaks.some((b) => !b.e) }));
   const salesmen = d.staff.filter((s) => s.role === 'salesman');
   const bucket = [aging.reduce((a, x) => a + x.a[0], 0), aging.reduce((a, x) => a + x.a[1], 0), overdue]; const bucketTotal = Math.max(1, bucket.reduce((a, b) => a + b, 0));
-  const AGEC = ['#7FB5A6', '#E3B04B', '#D9705F'];
+  const AGEC = ['#8FA05E', '#E08A3C', '#D9705F'];
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening';
 
   return (
@@ -106,7 +106,7 @@ export default function Dashboard() {
             <div className="font-display text-2xl font-semibold tracking-tight">Sold today</div>
             <div className="text-sm">Yesterday finished at <Rupee v={salesOn(d, yesterday)} className="font-semibold" /></div>
           </div>
-          <div className="mt-2 whitespace-nowrap font-display text-[50px] font-semibold leading-none tracking-[-0.03em] text-[#0E3B36] sm:text-[92px] xl:text-[108px]">
+          <div className="mt-2 whitespace-nowrap font-display text-[50px] font-semibold leading-none tracking-[-0.03em] text-[#3B2B07] sm:text-[92px] xl:text-[108px]">
             <Rupee v={soldToday} animate className="[&>span:first-child]:mr-1.5 [&>span:first-child]:align-top [&>span:first-child]:text-[0.42em]" />
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2 text-[15px]">
@@ -117,7 +117,7 @@ export default function Dashboard() {
           <div className="mt-8 flex min-h-[8rem] flex-1 items-end gap-2" aria-label="Sales by hour today">
             {hours.map((v, i) => (
               <div key={i} className="flex h-full flex-1 flex-col justify-end" title={`${hourLabel(i + 9)}: ${money(v)}`}>
-                <div className="rise rounded-t-lg" style={{ height: `${Math.max(3, (v / maxHour) * 100)}%`, background: i === peak && v > 0 ? '#14504A' : '#A8CDBF', opacity: v ? 1 : 0.5, animationDelay: `${i * 55}ms` }} />
+                <div className="rise rounded-t-lg" style={{ height: `${Math.max(3, (v / maxHour) * 100)}%`, background: i === peak && v > 0 ? '#5B430E' : '#D7B96B', opacity: v ? 1 : 0.5, animationDelay: `${i * 55}ms` }} />
               </div>
             ))}
           </div>
@@ -156,12 +156,12 @@ export default function Dashboard() {
           <div className="relative min-h-[15rem] flex-1"><div className="absolute inset-0">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={trend} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="2 5" vertical={false} stroke="#E1E8E5" />
-                <XAxis dataKey="day" fontSize={11} tickLine={false} axisLine={false} interval={1} stroke="#5E7077" />
-                <YAxis fontSize={11} tickLine={false} axisLine={false} tickFormatter={short} stroke="#5E7077" width={48} />
-                <Tooltip formatter={(v: number) => money(v)} contentStyle={{ borderRadius: 12, border: '1px solid #E1E8E5', fontSize: 13 }} />
-                <Area type="monotone" dataKey="before" name="Before" stroke="#5E7077" strokeOpacity={0.55} strokeDasharray="5 4" strokeWidth={1.5} fill="none" animationDuration={1200} />
-                <Area type="monotone" dataKey="now" name="Sold" stroke="#1F6F68" strokeWidth={2.75} fill="#1F6F68" fillOpacity={0.1} animationDuration={1200} />
+                <CartesianGrid strokeDasharray="2 5" vertical={false} stroke="#E7DFCC" />
+                <XAxis dataKey="day" fontSize={11} tickLine={false} axisLine={false} interval={1} stroke="#6E6657" />
+                <YAxis fontSize={11} tickLine={false} axisLine={false} tickFormatter={short} stroke="#6E6657" width={48} />
+                <Tooltip formatter={(v: number) => money(v)} contentStyle={{ borderRadius: 12, border: '1px solid #E7DFCC', fontSize: 13 }} />
+                <Area type="monotone" dataKey="before" name="Before" stroke="#6E6657" strokeOpacity={0.55} strokeDasharray="5 4" strokeWidth={1.5} fill="none" animationDuration={1200} />
+                <Area type="monotone" dataKey="now" name="Sold" stroke="#B8892B" strokeWidth={2.75} fill="#B8892B" fillOpacity={0.1} animationDuration={1200} />
               </AreaChart>
             </ResponsiveContainer>
           </div></div>
@@ -179,7 +179,7 @@ export default function Dashboard() {
                 <span className="w-4 text-sm text-steel">{i + 1}</span><Chip staff={d.staff} id={b.s.id} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2"><span className="font-medium">{b.s.name}</span><span className="font-display text-xl font-semibold"><CountUp value={b.pts} delay={300 + i * 90} /> <span className="font-sans text-xs font-normal text-steel">points</span></span></div>
-                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-paper"><GrowBar pct={(b.pts / topPts) * 100} color={i === 0 ? '#1F6F68' : '#A8CDBF'} delay={i * 90} /></div>
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-paper"><GrowBar pct={(b.pts / topPts) * 100} color={i === 0 ? '#B8892B' : '#D7B96B'} delay={i * 90} /></div>
                   <div className="mt-0.5 text-xs text-steel">{money(b.sales)} sold</div>
                 </div>
               </li>
@@ -215,7 +215,7 @@ export default function Dashboard() {
                     <Link href={`/admin/products/${p.id}`} className="truncate text-[15px] font-medium hover:underline">{p.name}</Link>
                     <span className="shrink-0 text-sm tabular-nums"><b>{stockTotal(p)}</b><span className="text-steel"> of {p.min}</span></span>
                   </div>
-                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-paper"><GrowBar pct={ratio * 100} color={ratio < 0.35 ? '#D9705F' : '#E3B04B'} /></div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-paper"><GrowBar pct={ratio * 100} color={ratio < 0.35 ? '#D9705F' : '#E08A3C'} /></div>
                   <div className="mt-0.5 text-xs text-steel">{LOCS.map((n, i) => (p.stock[i] > 0 ? `${n} ${p.stock[i]}` : '')).filter(Boolean).join(', ')}</div>
                 </li>
               );

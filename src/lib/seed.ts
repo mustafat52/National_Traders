@@ -109,11 +109,13 @@ export function buildSeed(): Data {
       q++; const cash = r() < 0.5 ? total : r() < 0.5 ? 0 : Math.round(total / 2);
       return { id: `B${q}`, no: `QUO-${pad(q)}`, kind, code: Math.random().toString(36).slice(2, 18), date, staffId: st.id, customerId: cust.id, tier: cust.tier, lines, total, cash, online: total - cash, points: calcPoints(total, 10), status: 'paid' };
     }
-    e++; return { id: `E${e}`, no: `EST-${pad(e)}`, kind, code: Math.random().toString(36).slice(2, 18), date, staffId: st.id, customerId: cust.id, tier: cust.tier, lines, total, cash: 0, online: 0, points: 0, status: 'open',
+    // some estimate prices are older than today's price list, so the owner sees changed prices when converting
+    const el = lines.map((l) => (r() < 0.3 ? { ...l, price: Math.round(l.price * (r() < 0.5 ? 0.92 : 1.06)) } : l)); const et = el.reduce((a, l) => a + l.qty * l.price, 0);
+    e++; return { id: `E${e}`, no: `EST-${pad(e)}`, kind, code: Math.random().toString(36).slice(2, 18), date, staffId: st.id, customerId: cust.id, tier: cust.tier, lines: el, total: et, cash: 0, online: 0, points: 0, status: 'open',
       validUntil: new Date(new Date(date).getTime() + 7 * 86400000).toISOString() };
   };
   for (let i = 0; i < 520; i++) bills.push(mkBill('quotation', Math.floor(Math.pow(r(), 1.3) * 90), pick(customers.slice(1)), pick(salesmen)));
-  for (let i = 0; i < 50; i++) bills.push(mkBill('estimate', Math.floor(r() * 25), pick(customers.slice(1)), pick(salesmen)));
+  for (let i = 0; i < 50; i++) bills.push(mkBill('estimate', Math.floor(r() * 14), pick(customers.slice(1)), pick(salesmen)));
   // Demo scenario: the "Demo Repeat Customer" bought two specific products 3 days ago
   bills.push(mkBill('quotation', 3, customers[0], salesmen[0], [products[5], products[1200]]));
   bills.sort((a, b) => b.date.localeCompare(a.date));
@@ -149,6 +151,9 @@ export function buildSeed(): Data {
     { id: 'PA2', staffId: 'S2', month: mk(new Date()), kind: 'advance', amount: 2000, note: 'Advance for medical expense', date: dayKey(8) },
   ];
   const payslips: Data['payslips'] = [];
+
+  // Cost of some products has risen since their selling prices were set: sales of these look thin or below cost at the latest purchase price.
+  products.forEach((p, i) => { if (i % 37 === 0) p.pp = Math.round(p.pp * 1.3); });
 
   const data: Data = {
     products, vendors, purchases, payments, staff, attendance, leaves, payAdjusts, payslips,

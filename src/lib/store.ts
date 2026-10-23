@@ -41,6 +41,8 @@ interface Actions {
   upsertCustomer: (phone: string, tier: number) => string;
   saveBill: (kind: 'estimate' | 'quotation', d: BillDraft) => Bill;
   startConvert: (estimateId: string | null) => void;
+  /** OWNER ONLY. Turns an open estimate into a paid sale at the prices the owner chose. Points go to the salesman who made the estimate. */
+  convertEstimate: (estimateId: string, choices: { pid: string; price: number; alloc: number[] }[], cash: number, online: number) => Bill;
   processReturn: (r: { kind: 'sales' | 'damage'; billId: string; staffId: string; lines: { pid: string; qty: number; loc: number }[]; cash: number; online: number }) => void;
   updateSettings: (s: Settings) => void;
   resetDemo: () => void;
@@ -201,6 +203,7 @@ export const useStore = create<Store>()(
         const s = get(); const now = new Date();
         const total = d.lines.reduce((a, l) => a + l.qty * l.price, 0);
         if (!d.lines.length) throw new Error('Add at least one item');
+        if (d.fromEstimate && s.session?.role !== 'admin') throw new Error('Only the owner can convert an estimate to a sale');
         if (kind === 'quotation') {
           const pm = new Map(s.products.map((p) => [p.id, p]));
           for (const l of d.lines) {
@@ -217,6 +220,7 @@ export const useStore = create<Store>()(
           cash: kind === 'quotation' ? d.cash : 0, online: kind === 'quotation' ? d.online : 0,
           points: kind === 'quotation' ? calcPoints(total, s.settings.pointsPer1000) : 0,
           status: kind === 'quotation' ? 'paid' : 'open', fromEstimate: d.fromEstimate,
+          convertedBy: d.fromEstimate ? s.session?.staffId : undefined, convertedAt: d.fromEstimate ? now.toISOString() : undefined,
           validUntil: kind === 'estimate' ? new Date(now.getTime() + s.settings.estimateDays * 86400000).toISOString() : undefined,
         };
         set((st) => {
@@ -230,6 +234,20 @@ export const useStore = create<Store>()(
         return bill;
       },
       startConvert: (estimateId) => set({ convert: estimateId ? { estimateId } : null }),
+      convertEstimate: (estimateId, choices, cash, online) => {
+        const s = get(); const est = s.bills.find((b) => b.id === estimateId);
+        if (s.session?.role !== 'admin') throw new Error('Only the owner can convert an estimate to a sale');
+        if (!est || est.kind !== 'estimate') throw new Error('Estimate not found');
+        if (est.status !== 'open') throw new Error('This estimate has already been converted');
+        if (!choices.length) throw new Error('Keep at least one item in the sale');
+        const lines: BillLine[] = choices.map((c) => {
+          const o = est.lines.find((l) => l.pid === c.pid); if (!o) throw new Error('An item is not part of this estimate');
+          if (!(c.price > 0)) throw new Error('Every price must be more than zero');
+          return { pid: c.pid, qty: o.qty, price: Math.round(c.price), alloc: c.alloc, estPrice: o.price };
+        });
+        // Points go to est.staffId: the salesman who made the estimate, not the owner.
+        return get().saveBill('quotation', { staffId: est.staffId, customerId: est.customerId, tier: est.tier, lines, cash, online, fromEstimate: est.id });
+      },
 
       /* ---------- returns ---------- */
       processReturn: (r) => {

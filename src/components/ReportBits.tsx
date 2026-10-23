@@ -11,7 +11,7 @@ export const TONE = {
   sage: 'bg-sage-bg text-sage-fg', butter: 'bg-butter-bg text-butter-fg', blush: 'bg-blush-bg text-blush-fg', sky: 'bg-sky-bg text-sky-fg', lilac: 'bg-lilac-bg text-lilac-fg', paper: 'bg-paper text-steel',
 };
 export type Tone = keyof typeof TONE;
-const BAR = ['#1F6F68', '#7FB5A6', '#E3B04B', '#8FB4D6', '#A99BDD', '#D9705F'];
+const BAR = ['#B8892B', '#8FA05E', '#E08A3C', '#8FB4D6', '#A99BDD', '#D9705F'];
 
 export const pctDelta = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
 
@@ -47,16 +47,17 @@ export function BarList({ rows, fmt = money, empty = 'Nothing in this period', l
     </ol>
   );
 }
-export function Trend({ data, name = 'Net sales' }: { data: { label: string; v: number }[]; name?: string }) {
+export function Trend({ data, name = 'Net sales', name2 }: { data: { label: string; v: number; v2?: number }[]; name?: string; name2?: string }) {
   return (
     <div className="h-64" role="img" aria-label={`${name} over time`}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="2 5" vertical={false} stroke="#E1E8E5" />
-          <XAxis dataKey="label" fontSize={11} tickLine={false} axisLine={false} stroke="#5E7077" minTickGap={24} />
-          <YAxis fontSize={11} tickLine={false} axisLine={false} tickFormatter={short} stroke="#5E7077" width={48} />
-          <Tooltip formatter={(v: number) => money(v)} contentStyle={{ borderRadius: 12, border: '1px solid #E1E8E5', fontSize: 13 }} />
-          <Area type="monotone" dataKey="v" name={name} stroke="#1F6F68" strokeWidth={2.75} fill="#1F6F68" fillOpacity={0.1} animationDuration={1000} />
+          <CartesianGrid strokeDasharray="2 5" vertical={false} stroke="#E7DFCC" />
+          <XAxis dataKey="label" fontSize={11} tickLine={false} axisLine={false} stroke="#6E6657" minTickGap={24} />
+          <YAxis fontSize={11} tickLine={false} axisLine={false} tickFormatter={short} stroke="#6E6657" width={48} />
+          <Tooltip formatter={(v: number) => money(v)} contentStyle={{ borderRadius: 12, border: '1px solid #E7DFCC', fontSize: 13 }} />
+          <Area type="monotone" dataKey="v" name={name} stroke="#B8892B" strokeWidth={2.75} fill="#B8892B" fillOpacity={0.1} animationDuration={1000} />
+          {name2 && <Area type="monotone" dataKey="v2" name={name2} stroke="#E08A3C" strokeWidth={2.5} fill="#E08A3C" fillOpacity={0.12} animationDuration={1000} />}
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -67,7 +68,7 @@ export function RangeBar({ from, to, set }: { from: string; to: string; set: (a:
   const now = new Date(); const t = dk(now); const ago = (n: number) => dk(new Date(now.getTime() - n * 86400000));
   const som = t.slice(0, 8) + '01'; const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1); const lme = new Date(now.getFullYear(), now.getMonth(), 0);
   const fy = (now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1) + '-04-01';
-  const presets: [string, string, string][] = [['Today', t, t], ['7 days', ago(6), t], ['30 days', ago(29), t], ['This month', som, t], ['Last month', dk(lm), dk(lme)], ['This year', fy, t]];
+  const presets: [string, string, string][] = [['Today', t, t], ['Yesterday', ago(1), ago(1)], ['7 days', ago(6), t], ['30 days', ago(29), t], ['2 months', ago(59), t], ['This month', som, t], ['Last month', dk(lm), dk(lme)], ['This year', fy, t]];
   return (
     <div className="flex flex-wrap items-center gap-2">
       <div className="flex flex-wrap gap-1.5 text-sm">{presets.map(([l, a, b]) => <button key={l} onClick={() => set(a, b)} className={`rounded-full px-3.5 py-1.5 font-medium transition ${from === a && to === b ? 'bg-brand text-white' : 'border border-line bg-white text-steel hover:text-ink'}`}>{l}</button>)}</div>

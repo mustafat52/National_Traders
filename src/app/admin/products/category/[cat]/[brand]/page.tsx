@@ -9,7 +9,7 @@ import { isLow, money, stockTotal } from '@/lib/rules';
 import { Btn } from '@/components/ui';
 import { Crumbs } from '@/components/Crumbs';
 
-const LOCC = ['#1F6F68', '#7FB5A6', '#C9E0D7'];
+const LOCC = ['#B8892B', '#8FA05E', '#EAD9A3'];
 const PRICE_TINT = ['bg-sage-bg text-sage-fg', 'bg-sky-bg text-sky-fg', 'bg-butter-bg text-butter-fg', 'bg-lilac-bg text-lilac-fg'];
 
 export default function BrandPage() {
