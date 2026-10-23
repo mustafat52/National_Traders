@@ -51,7 +51,7 @@ export default function Dashboard() {
   const attention = [
     { n: low.length, text: 'items are at or below their minimum', sub: soldOut ? `${soldOut} are sold out completely` : 'none are sold out', href: '/admin/lowstock', act: 'Review stock', t: 'bg-butter-bg text-butter-fg' },
     { n: overdueVendors, text: overdueVendors === 1 ? 'vendor is owed for over 60 days' : 'vendors are owed for over 60 days', sub: overdue ? `${money(overdue)} outstanding` : '', href: '/admin/vendors', act: 'Open payables', t: 'bg-blush-bg text-blush-fg' },
-    { n: pendingLeaves, text: pendingLeaves === 1 ? 'leave request is waiting' : 'leave requests are waiting', sub: 'Staff are waiting for a yes or no', href: '/admin/staff', act: 'Decide', t: 'bg-sky-bg text-sky-fg' },
+    { n: pendingLeaves, text: pendingLeaves === 1 ? 'leave request is waiting' : 'leave requests are waiting', sub: 'Staff are waiting for a yes or no', href: '/admin/leaves', act: 'Decide', t: 'bg-sky-bg text-sky-fg' },
     { n: expiring, text: expiring === 1 ? 'estimate expires within 2 days' : 'estimates expire within 2 days', sub: 'A call now can turn them into sales', href: '/admin/reports', act: 'See bills', t: 'bg-lilac-bg text-lilac-fg' },
   ].filter((a) => a.n > 0);
 

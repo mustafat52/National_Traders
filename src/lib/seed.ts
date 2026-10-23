@@ -1,6 +1,8 @@
-import { Attendance, Bill, Customer, Data, Product, Purchase, Staff, Vendor, VendorPayment } from './types';
-import { calcPoints, dk, pad } from './rules';
+import { Attendance, Bill, Customer, Data, Leave, PayAdjust, Product, Purchase, Staff, Vendor, VendorPayment } from './types';
+import { calcPoints, dk, mk, pad } from './rules';
+import { computePay, figuresOf, leaveDays, shiftMonth } from './payroll';
 
+const dayKey = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return dk(d); };
 function rng(seed: number) {
   return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -54,8 +56,8 @@ export function buildSeed(): Data {
   });
 
   const staff: Staff[] = [
-    { id: 'S0', name: 'Owner (Admin)', role: 'admin', phone: '9000000000' },
-    ...['Imran', 'Salman', 'Naveen', 'Faisal', 'Kiran', 'Zaheer'].map((n, i) => ({ id: `S${i + 1}`, name: n, role: 'salesman' as const, phone: `90000000${pad(i + 1, 2)}` })),
+    { id: 'S0', name: 'Owner (Admin)', role: 'admin', phone: '9000000000', salary: 0 },
+    ...['Imran', 'Salman', 'Naveen', 'Faisal', 'Kiran', 'Zaheer'].map((n, i) => ({ id: `S${i + 1}`, name: n, role: 'salesman' as const, phone: `90000000${pad(i + 1, 2)}`, salary: [20000, 16000, 15000, 15000, 13500, 12000][i], joined: dayKey(74) })),
   ];
   const salesmen = staff.filter((s) => s.role === 'salesman');
 
@@ -116,24 +118,48 @@ export function buildSeed(): Data {
   bills.push(mkBill('quotation', 3, customers[0], salesmen[0], [products[5], products[1200]]));
   bills.sort((a, b) => b.date.localeCompare(a.date));
 
+  // Leaves: one waiting for a decision, one approved PAID, one approved UNPAID, one rejected. Attendance is skipped on approved leave days.
+  const mkLeave = (id: string, staffId: string, from: number, to: number, type: string, reason: string, x: Partial<Leave>): Leave =>
+    ({ id, staffId, from: dayKey(from), to: dayKey(to), type, reason, days: leaveDays(dayKey(from), dayKey(to), 0), requestedAt: new Date(Date.now() - (Math.max(from, to) + 4) * 86400000).toISOString(), status: 'approved', ...x });
+  const leaves: Leave[] = [
+    mkLeave('L1', 'S2', -2, -3, 'Casual', 'Family function in Warangal, need to travel the day before', { status: 'pending', requestedAt: new Date(Date.now() - 3600000 * 5).toISOString() }),
+    mkLeave('L2', 'S1', 33, 32, 'Sick', 'Viral fever. Doctor advised two days of rest', { pay: 'paid', note: 'Get well soon. Medical leave is paid.', decidedAt: dayKey(34) }),
+    mkLeave('L3', 'S3', 20, 18, 'Casual', "Cousin's wedding in Vijayawada", { pay: 'unpaid', note: 'Casual leave for the year already used, so this one is unpaid.', decidedAt: dayKey(24) }),
+    mkLeave('L4', 'S4', 12, 12, 'Casual', 'Bike repair at the service centre', { status: 'rejected', note: 'Month-end stock counting that day, everyone is needed.', decidedAt: dayKey(14) }),
+  ];
+  const onLeave = (sid: string, key: string) => leaves.some((l) => l.staffId === sid && l.status === 'approved' && key >= l.from && key <= l.to);
   const attendance: Attendance[] = [];
   salesmen.forEach((s, si) => {
-    for (let d = 0; d < 30; d++) {
+    for (let d = 0; d < 75; d++) {
       if (d > 0 && (new Date(Date.now() - d * 86400000).getDay() === 0 || r() < 0.06)) continue;
       const day = new Date(); day.setDate(day.getDate() - d);
       const inT = new Date(day); inT.setHours(9, 25 + Math.floor(r() * 70), 0, 0);
       const outT = new Date(day); outT.setHours(19, Math.floor(r() * 50), 0, 0);
       const bs = new Date(day); bs.setHours(13, Math.floor(r() * 30), 0, 0); const be = new Date(bs.getTime() + (25 + Math.floor(r() * 20)) * 60000);
       if (d === 0 && si > 3) continue;
+      if (onLeave(s.id, dk(day))) continue;
       attendance.push({ id: `A${s.id}-${d}`, staffId: s.id, date: dk(day), in: inT.toISOString(), out: d === 0 ? undefined : outT.toISOString(), breaks: d === 0 ? [] : [{ s: bs.toISOString(), e: be.toISOString() }], gaps: [] });
     }
   });
 
-  return {
-    products, vendors, purchases, payments, staff, attendance,
-    leaves: [{ id: 'L1', staffId: 'S2', from: dk(daysAgo(-2)), to: dk(daysAgo(-3)), type: 'Casual', reason: 'Family function', status: 'pending' }],
+  // Payroll: a bonus last month, an advance this month, and last month's salary already paid for the first three people.
+  const prev = shiftMonth(mk(new Date()), -1);
+  const payAdjusts: PayAdjust[] = [
+    { id: 'PA1', staffId: 'S1', month: prev, kind: 'bonus', amount: 1000, note: 'Festival bonus', date: dayKey(25) },
+    { id: 'PA2', staffId: 'S2', month: mk(new Date()), kind: 'advance', amount: 2000, note: 'Advance for medical expense', date: dayKey(8) },
+  ];
+  const payslips: Data['payslips'] = [];
+
+  const data: Data = {
+    products, vendors, purchases, payments, staff, attendance, leaves, payAdjusts, payslips,
     customers, bills, returns: [], stockIns: [], transfers: [], adjustments: [],
-    settings: { pointsPer1000: 10, repeatDays: 15, estimateDays: 7, linkDays: 60, lateAfter: '10:00' },
-    counters: { est: e + 1, quo: q + 1, ret: 1, pur: po + 1, sin: 1 },
+    settings: { pointsPer1000: 10, repeatDays: 15, estimateDays: 7, linkDays: 60, lateAfter: '10:00', weeklyOff: 0 },
+    counters: { est: e + 1, quo: q + 1, ret: 1, pur: po + 1, sin: 1, pay: 1 },
   };
+  salesmen.slice(0, 3).forEach((st, i) => {
+    const c = computePay(data, st, prev);
+    payslips.push({ ...figuresOf(c), id: `PS${i + 1}`, no: `SLP-${pad(i + 1)}`, staffId: st.id, month: prev, paidOn: new Date(Date.now() - 18 * 86400000).toISOString(), mode: i === 1 ? 'Online' : 'Cash' });
+  });
+  data.counters.pay = payslips.length + 1;
+  return data;
 }

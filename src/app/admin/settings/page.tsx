@@ -16,6 +16,7 @@ export default function SettingsPage() {
         <Field label="Estimate validity (days)"><input type="number" className="w-full" value={s.estimateDays} onChange={n('estimateDays')} /></Field>
         <Field label="Customer bill link expiry (days)"><input type="number" className="w-full" value={s.linkDays} onChange={n('linkDays')} /></Field>
         <Field label="Late arrival after (HH:MM)"><input className="w-full" value={s.lateAfter} onChange={n('lateAfter')} /></Field>
+        <Field label="Weekly off day (not counted as a working day)"><select className="w-full" value={s.weeklyOff} onChange={(e) => setS({ ...s, weeklyOff: +e.target.value })}>{['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((n, i) => <option key={n} value={i}>{n}</option>)}</select></Field>
         <div className="flex items-end"><Btn onClick={() => { updateSettings(s); alert('Saved'); }}>Save settings</Btn></div>
       </Card>
       <Card className="mt-6 max-w-2xl"><div className="mb-2 text-sm font-semibold">Demo data</div><p className="mb-3 text-sm text-slate-600">Restores the original fake data (products, bills, vendors, attendance) and clears everything you entered.</p>

@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ArrowLeftRight, AlertTriangle, Boxes, FileText, LayoutDashboard, LogOut, PackagePlus, Settings, Truck, Users, type LucideIcon } from 'lucide-react';
+import { ArrowLeftRight, AlertTriangle, Boxes, FileText, LayoutDashboard, LogOut, PackagePlus, Settings, Truck, Users, CalendarDays, Wallet, type LucideIcon } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { useGuard } from '@/components/Shell';
 import { cx } from '@/components/ui';
@@ -11,17 +11,17 @@ const GROUPS: { label: string; items: Item[] }[] = [
   { label: '', items: [['/admin', 'Dashboard', LayoutDashboard]] },
   { label: 'Stock', items: [['/admin/products', 'Products & Prices', Boxes], ['/admin/stockin', 'Stock In (Incoming)', PackagePlus], ['/admin/transfers', 'Stock Transfers', ArrowLeftRight], ['/admin/lowstock', 'Low Stock', AlertTriangle]] },
   { label: 'Buying', items: [['/admin/vendors', 'Vendors & Payables', Truck]] },
-  { label: 'Team and reports', items: [['/admin/staff', 'Staff & Attendance', Users], ['/admin/reports', 'Reports', FileText]] },
+  { label: 'Team and reports', items: [['/admin/staff', 'Staff & Attendance', Users], ['/admin/leaves', 'Leave Requests', CalendarDays], ['/admin/payroll', 'Salaries & Payroll', Wallet], ['/admin/reports', 'Reports', FileText]] },
 ];
 const ALL: Item[] = [...GROUPS.flatMap((g) => g.items), ['/admin/settings', 'Settings', Settings]];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const session = useGuard('admin'); const path = usePathname(); const router = useRouter(); const logout = useStore((s) => s.logout);
+  const session = useGuard('admin'); const pendingLeaves = useStore((st) => st.leaves.filter((l) => l.status === 'pending').length); const path = usePathname(); const router = useRouter(); const logout = useStore((s) => s.logout);
   if (!session) return null;
   const active = (href: string) => (href === '/admin' ? path === href : path.startsWith(href));
   const link = (href: string, label: string, Icon: LucideIcon) => (
     <Link key={href} href={href} className={cx('mx-3 flex items-center gap-3 rounded-xl px-3 py-2 text-[15px] transition-colors', active(href) ? 'bg-sage-bg font-semibold text-sage-fg' : 'text-steel hover:bg-white hover:text-ink')}>
-      <Icon className="h-[18px] w-[18px]" />{label}
+      <Icon className="h-[18px] w-[18px]" />{label}{href === '/admin/leaves' && pendingLeaves > 0 && <span className="ml-auto rounded-full bg-butter-bg px-2 py-0.5 text-xs font-semibold text-butter-fg">{pendingLeaves}</span>}
     </Link>
   );
   return (

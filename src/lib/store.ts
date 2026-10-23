@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { buildSeed } from './seed';
-import { Bill, BillLine, Data, Purchase, ReturnRec, Settings, Staff, Vendor } from './types';
-import { calcPoints, dk, pad, uid } from './rules';
+import { AdjustKind, Bill, BillLine, Data, Purchase, ReturnRec, Settings, Staff, Vendor } from './types';
+import { calcPoints, dk, money, pad, uid } from './rules';
+import { computePay, figuresOf, leaveDays, leaveLocked, monthLabel } from './payroll';
 
 /**
  * DATA LAYER (demo). Every action below is what the Supabase backend will replace.
@@ -22,8 +23,14 @@ interface Actions {
   startBreak: () => void;
   endBreak: () => void;
   requestLeave: (from: string, to: string, type: string, reason: string) => void;
-  setLeave: (id: string, status: 'approved' | 'rejected') => void;
-  addStaff: (name: string, phone: string) => void;
+  /** Approving needs a pay decision (paid keeps the salary, unpaid deducts). Rejecting needs a remark. */
+  decideLeave: (id: string, status: 'approved' | 'rejected', pay?: 'paid' | 'unpaid', note?: string) => void;
+  addStaff: (name: string, phone: string, salary: number) => void;
+  updateStaff: (id: string, v: { name: string; phone: string; salary: number }) => void;
+  addPayAdjust: (staffId: string, month: string, kind: AdjustKind, amount: number, note: string) => void;
+  removePayAdjust: (id: string) => void;
+  payStaff: (staffId: string, month: string, mode: string) => void;
+  reopenPayslip: (id: string) => void;
   saveProduct: (p: Data['products'][number]) => void;
   adjustStock: (pid: string, loc: number, to: number, reason: string) => void;
   transfer: (pid: string, from: number, to: number, qty: number) => void;
@@ -76,9 +83,55 @@ export const useStore = create<Store>()(
       }),
       startBreak: () => set((s) => ({ attendance: s.attendance.map((a) => a.staffId === s.session?.staffId && a.date === dk(new Date()) ? { ...a, breaks: [...a.breaks, { s: new Date().toISOString() }] } : a) })),
       endBreak: () => set((s) => ({ attendance: s.attendance.map((a) => a.staffId === s.session?.staffId && a.date === dk(new Date()) ? { ...a, breaks: a.breaks.map((b) => (b.e ? b : { ...b, e: new Date().toISOString() })) } : a) })),
-      requestLeave: (from, to, type, reason) => set((s) => ({ leaves: [{ id: uid('L'), staffId: s.session!.staffId, from, to, type, reason, status: 'pending' }, ...s.leaves] })),
-      setLeave: (id, status) => set((s) => ({ leaves: s.leaves.map((l) => (l.id === id ? { ...l, status } : l)) })),
-      addStaff: (name, phone) => set((s) => ({ staff: [...s.staff, { id: uid('S'), name, phone, role: 'salesman' } as Staff] })),
+      requestLeave: (from, to, type, reason) => set((s) => {
+        const me = s.session!.staffId; const why = reason.trim();
+        if (!from || !to || to < from) throw new Error('The last day cannot be before the first day');
+        if (why.length < 5) throw new Error('Please write the reason for your leave (at least a few words)');
+        const days = leaveDays(from, to, s.settings.weeklyOff);
+        if (days === 0) throw new Error('Those dates are only the weekly off, so no leave is needed');
+        if (s.leaves.some((l) => l.staffId === me && l.status !== 'rejected' && from <= l.to && to >= l.from)) throw new Error('You already have a leave request that overlaps these dates');
+        return { leaves: [{ id: uid('L'), staffId: me, from, to, type, reason: why, days, requestedAt: new Date().toISOString(), status: 'pending' as const }, ...s.leaves] };
+      }),
+      decideLeave: (id, status, pay, note) => set((s) => {
+        const l = s.leaves.find((x) => x.id === id)!;
+        if (leaveLocked(s, l)) throw new Error('Salary for this period is already paid, so this leave can no longer change. Reopen the payslip first.');
+        if (status === 'approved' && !pay) throw new Error('Choose whether this leave is paid or unpaid');
+        if (status === 'rejected' && !(note ?? '').trim()) throw new Error('Write a short reason so the staff member knows why it was rejected');
+        return { leaves: s.leaves.map((x) => (x.id === id ? { ...x, status, pay: status === 'approved' ? pay : undefined, note: (note ?? '').trim() || undefined, decidedAt: new Date().toISOString() } : x)) };
+      }),
+      addStaff: (name, phone, salary) => set((s) => {
+        if (!name.trim()) throw new Error('Enter the name');
+        if (!(salary > 0)) throw new Error('Enter the monthly salary');
+        return { staff: [...s.staff, { id: uid('S'), name: name.trim(), phone, salary, joined: dk(new Date()), role: 'salesman' } as Staff] };
+      }),
+      updateStaff: (id, v) => set((s) => {
+        if (!v.name.trim()) throw new Error('Enter the name');
+        if (!(v.salary > 0)) throw new Error('Enter the monthly salary');
+        return { staff: s.staff.map((x) => (x.id === id ? { ...x, ...v, name: v.name.trim() } : x)) };
+      }),
+      addPayAdjust: (staffId, month, kind, amount, note) => set((s) => {
+        if (s.payslips.some((p) => p.staffId === staffId && p.month === month)) throw new Error(`${monthLabel(month)} is already paid. Reopen the payslip to change it.`);
+        if (!(amount > 0)) throw new Error('Enter an amount');
+        if (!note.trim()) throw new Error('Add a short note so the reason is on record');
+        return { payAdjusts: [{ id: uid('PA'), staffId, month, kind, amount: Math.round(amount), note: note.trim(), date: new Date().toISOString() }, ...s.payAdjusts] };
+      }),
+      removePayAdjust: (id) => set((s) => {
+        const a = s.payAdjusts.find((x) => x.id === id)!;
+        if (s.payslips.some((p) => p.staffId === a.staffId && p.month === a.month)) throw new Error('This month is already paid. Reopen the payslip first.');
+        return { payAdjusts: s.payAdjusts.filter((x) => x.id !== id) };
+      }),
+      /** Freezes the month's figures as a payslip. Leaves and adjustments for that month are locked afterwards. */
+      payStaff: (staffId, month, mode) => set((s) => {
+        const st = s.staff.find((x) => x.id === staffId)!;
+        if (s.payslips.some((p) => p.staffId === staffId && p.month === month)) throw new Error('Already paid for this month');
+        if (s.leaves.some((l) => l.staffId === staffId && l.status === 'pending' && l.from.slice(0, 7) <= month && l.to.slice(0, 7) >= month))
+          throw new Error('There is a leave request for this month still waiting for your decision. Decide it first so the pay is right.');
+        const c = computePay(s, st, month);
+        if (c.net < 0) throw new Error(`Net pay is ${money(c.net)}. Reduce the advance or deductions before paying.`);
+        const n = s.counters.pay;
+        return { payslips: [{ ...figuresOf(c), id: uid('PS'), no: `SLP-${pad(n)}`, staffId, month, paidOn: new Date().toISOString(), mode }, ...s.payslips], counters: { ...s.counters, pay: n + 1 } };
+      }),
+      reopenPayslip: (id) => set((s) => ({ payslips: s.payslips.filter((p) => p.id !== id) })),
 
       /* ---------- inventory ---------- */
       saveProduct: (p) => set((s) => ({ products: s.products.some((x) => x.id === p.id) ? s.products.map((x) => (x.id === p.id ? p : x)) : [p, ...s.products] })),
@@ -204,11 +257,11 @@ export const useStore = create<Store>()(
       resetDemo: () => set({ ...buildSeed(), session: null, insideShop: true, convert: null }),
     }),
     {
-      name: 'nt-demo-v5', storage: createJSONStorage(() => storage),
+      name: 'nt-demo-v6', storage: createJSONStorage(() => storage),
       // Saved data from an older version is merged over today's defaults, so newer fields (stockIns, counters.sin) always exist.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<Store>;
-        return { ...current, ...p, stockIns: p.stockIns ?? current.stockIns, counters: { ...current.counters, ...(p.counters ?? {}) }, settings: { ...current.settings, ...(p.settings ?? {}) } } as Store;
+        return { ...current, ...p, stockIns: p.stockIns ?? current.stockIns, payAdjusts: p.payAdjusts ?? current.payAdjusts, payslips: p.payslips ?? current.payslips, counters: { ...current.counters, ...(p.counters ?? {}) }, settings: { ...current.settings, ...(p.settings ?? {}) } } as Store;
       },
     }
   )
