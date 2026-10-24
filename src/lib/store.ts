@@ -12,6 +12,10 @@ import { computePay, figuresOf, leaveDays, leaveLocked, monthLabel } from './pay
 export interface Session { role: 'admin' | 'staff'; staffId: string; }
 export interface BillDraft { staffId: string; customerId: string; tier: number; lines: BillLine[]; cash: number; online: number; fromEstimate?: string; }
 export interface ConvertDraft { estimateId: string; }
+/** A bill being made at the counter. A salesman can keep several open at once (a crowd in the shop) and switch between them. */
+export interface DraftLine { pid: string; qty: number; alloc: number[]; }
+export interface DraftResult { no: string; kind: 'estimate' | 'quotation'; total: number; points: number; code: string; }
+export interface Draft { id: string; staffId: string; phone: string; tier: number | null; lines: DraftLine[]; createdAt: string; result?: DraftResult; }
 /** Present when the delivery came with a vendor bill: creates the bill (money owed) and updates purchase prices. */
 export interface StockInBill { vendorId: string; billNo: string; prices: Record<string, number>; }
 
@@ -45,9 +49,13 @@ interface Actions {
   convertEstimate: (estimateId: string, choices: { pid: string; price: number; alloc: number[] }[], cash: number, online: number) => Bill;
   processReturn: (r: { kind: 'sales' | 'damage'; billId: string; staffId: string; lines: { pid: string; qty: number; loc: number }[]; cash: number; online: number }) => void;
   updateSettings: (s: Settings) => void;
+  newDraft: () => string;
+  patchDraft: (id: string, patch: Partial<Omit<Draft, 'id' | 'staffId'>>) => void;
+  closeDraft: (id: string) => void;
+  setActiveDraft: (id: string | null) => void;
   resetDemo: () => void;
 }
-export type Store = Data & Actions & { session: Session | null; insideShop: boolean; convert: ConvertDraft | null };
+export type Store = Data & Actions & { session: Session | null; insideShop: boolean; convert: ConvertDraft | null; drafts: Draft[]; activeDraft: string | null };
 
 const storage: StateStorage = {
   getItem: (n) => (typeof window === 'undefined' ? null : window.localStorage.getItem(n)),
@@ -59,7 +67,7 @@ const code = () => Math.random().toString(36).slice(2, 10) + Math.random().toStr
 export const useStore = create<Store>()(
   persist(
     (set, get) => ({
-      ...buildSeed(), session: null, insideShop: true, convert: null,
+      ...buildSeed(), session: null, insideShop: true, convert: null, drafts: [], activeDraft: null,
 
       /* ---------- session & attendance ---------- */
       login: (staffId) => set((s) => {
@@ -271,15 +279,29 @@ export const useStore = create<Store>()(
         }));
       },
 
+      /* ---------- bills in progress (several at once) ---------- */
+      newDraft: () => {
+        const id = uid('D'); const me = get().session?.staffId ?? '';
+        set((s) => ({ drafts: [...s.drafts, { id, staffId: me, phone: '', tier: null, lines: [], createdAt: new Date().toISOString() }], activeDraft: id }));
+        return id;
+      },
+      patchDraft: (id, patch) => set((s) => ({ drafts: s.drafts.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
+      closeDraft: (id) => set((s) => {
+        const mine = s.drafts.filter((x) => x.staffId === s.session?.staffId); const i = mine.findIndex((x) => x.id === id);
+        const rest = s.drafts.filter((x) => x.id !== id); const next = mine.filter((x) => x.id !== id);
+        return { drafts: rest, activeDraft: s.activeDraft === id ? (next[Math.min(i, next.length - 1)]?.id ?? null) : s.activeDraft };
+      }),
+      setActiveDraft: (id) => set({ activeDraft: id }),
+
       updateSettings: (settings) => set({ settings }),
-      resetDemo: () => set({ ...buildSeed(), session: null, insideShop: true, convert: null }),
+      resetDemo: () => set({ ...buildSeed(), session: null, insideShop: true, convert: null, drafts: [], activeDraft: null }),
     }),
     {
       name: 'nt-demo-v6', storage: createJSONStorage(() => storage),
       // Saved data from an older version is merged over today's defaults, so newer fields (stockIns, counters.sin) always exist.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<Store>;
-        return { ...current, ...p, stockIns: p.stockIns ?? current.stockIns, payAdjusts: p.payAdjusts ?? current.payAdjusts, payslips: p.payslips ?? current.payslips, counters: { ...current.counters, ...(p.counters ?? {}) }, settings: { ...current.settings, ...(p.settings ?? {}) } } as Store;
+        return { ...current, ...p, stockIns: p.stockIns ?? current.stockIns, drafts: p.drafts ?? [], payAdjusts: p.payAdjusts ?? current.payAdjusts, payslips: p.payslips ?? current.payslips, counters: { ...current.counters, ...(p.counters ?? {}) }, settings: { ...current.settings, ...(p.settings ?? {}) } } as Store;
       },
     }
   )
