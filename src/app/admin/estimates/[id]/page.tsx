@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { AlertTriangle, ArrowLeft, CheckCircle2, MessageCircle } from 'lucide-react';
 import { useStore, useProductMap } from '@/lib/store';
 import { LOCS, TIER_NAMES } from '@/lib/types';
-import { autoAlloc, calcPoints, fmtDate, isExpiredEstimate, money, needsPicker, stockTotal } from '@/lib/rules';
+import { autoAlloc, calcPoints, fmtDate, isExpiredEstimate, money, needsPicker, packBreakdown, qtyText, stockTotal } from '@/lib/rules';
 import { timeAgo } from '@/lib/time';
 import { emojiFor } from '@/lib/categories';
 import { Avatar, Banner, card, errText } from '@/components/StaffBits';
@@ -80,7 +80,7 @@ export default function Convert() {
           <div key={l.pid} className={`rounded-[22px] border p-5 ${!on ? 'border-line bg-paper opacity-60' : changed ? 'border-butter-fg/40 bg-white ring-2 ring-butter-bg' : 'border-line bg-white'}`}>
             <div className="flex flex-wrap items-start gap-3">
               <span className="flex h-11 w-11 items-center justify-center rounded-[14px] bg-paper text-xl">{emojiFor(p.cat)}</span>
-              <div className="min-w-0 flex-1"><div className="font-display text-lg font-semibold leading-6">{p.name}</div><div className="text-sm text-steel">{l.qty} {p.unit} · {p.sku} · in stock {stockTotal(p)} ({p.stock.join(' / ')})</div></div>
+              <div className="min-w-0 flex-1"><div className="font-display text-lg font-semibold leading-6">{p.name}</div><div className="text-sm text-steel">{qtyText(l.qty, p.unit, l.pack)} · {p.sku} · in stock {packBreakdown(stockTotal(p), p.unit, p.packs)} ({p.stock.join(' / ')})</div></div>
               <label className="flex items-center gap-2 text-sm text-steel"><input type="checkbox" checked={!on} onChange={(e) => setSkip({ ...skip, [l.pid]: e.target.checked })} className="!h-4 !w-4" />Customer is not taking this</label>
             </div>
             {on && (<>

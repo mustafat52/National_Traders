@@ -1,5 +1,5 @@
 import { carpRows } from './carpenters';
-import { Attendance, Bill, CarpPayout, Carpenter, Customer, Data, Leave, PayAdjust, Product, Purchase, Staff, Vendor, VendorPayment } from './types';
+import { DEFAULT_LOCS, Attendance, Bill, CarpPayout, Carpenter, Customer, Data, Leave, PayAdjust, Product, Purchase, Staff, Vendor, VendorPayment } from './types';
 import { calcPoints, dk, mk, pad } from './rules';
 import { computePay, figuresOf, leaveDays, shiftMonth } from './payroll';
 
@@ -15,8 +15,8 @@ const CATS: [string, string, string, number, number][] = [
   ['Taps & Faucets','Tap','pcs',150,2500],['Showers','Shower','pcs',300,5000],['Sanitaryware','Sanitary Item','pcs',1200,9000],['Pumps & Motors','Pump','pcs',3500,18000],
   ['Interior Paints','Paint','ltr',250,4500],['Exterior Paints','Exterior Paint','ltr',300,5000],['Primers & Putty','Putty','kg',40,900],['Enamels & Thinners','Enamel','ltr',150,1200],
   ['Paint Brushes','Brush','pcs',20,350],['Rollers & Trays','Roller','pcs',40,450],['Wood Polish','Polish','ltr',200,1500],['Waterproofing','Waterproofing Coat','ltr',200,2500],
-  ['Nuts & Bolts','Bolt','box',60,900],['Screws','Screw','box',40,700],['Nails & Staples','Nails','kg',60,300],['Anchors & Rawl Plugs','Anchor','box',50,600],
-  ['Washers & Rivets','Rivet','box',30,400],['Chains & Hooks','Chain','m',25,400],['Hinges','Hinge','pair',20,500],['Door Handles','Handle','pcs',80,2200],
+  ['Nuts & Bolts','Bolt','pcs',2,25],['Screws','Screw','pcs',1,8],['Nails & Staples','Nails','kg',60,300],['Anchors & Rawl Plugs','Anchor','pcs',1,15],
+  ['Washers & Rivets','Rivet','pcs',1,10],['Chains & Hooks','Chain','m',25,400],['Hinges','Hinge','pair',20,500],['Door Handles','Handle','pcs',80,2200],
   ['Locks & Padlocks','Lock','pcs',60,2500],['Door Closers','Closer','pcs',300,2500],['Drawer Channels','Channel','pair',60,600],['Cabinet Fittings','Fitting','pcs',20,500],
   ['Hand Tools','Tool','pcs',40,1200],['Spanners & Wrenches','Spanner','set',100,2500],['Pliers & Cutters','Plier','pcs',60,900],['Measuring Tapes','Tape','pcs',30,600],
   ['Drill Machines','Drill','pcs',1500,9000],['Grinders','Grinder','pcs',1800,7500],['Drill Bits','Drill Bit','set',40,1500],['Cutting Discs','Disc','pcs',25,300],
@@ -26,6 +26,12 @@ const CATS: [string, string, string, number, number][] = [
   ['Cleaning Supplies','Cleaner','pcs',20,500],['Hoses & Sprayers','Hose','m',30,200],['Tarpaulin & Sheets','Tarpaulin','pcs',200,3000],['Batteries & Torches','Torch','pcs',50,1200],
 ];
 export const CATEGORIES = CATS.map((c) => c[0]);
+/** Screws and fasteners are counted in pieces; a box holds a different number for each product. */
+const PACKS: Record<string, { small: { name: string; per: number }[]; boxes: number[] }> = {
+  'Screws': { small: [{ name: 'Dozen', per: 12 }], boxes: [100, 200, 400, 500] }, 'Nuts & Bolts': { small: [{ name: 'Dozen', per: 12 }], boxes: [50, 100, 200] },
+  'Anchors & Rawl Plugs': { small: [{ name: 'Dozen', per: 12 }], boxes: [100, 250] }, 'Washers & Rivets': { small: [{ name: 'Dozen', per: 12 }], boxes: [200, 500, 1000] },
+};
+const DOZEN = new Set(['Modular Switches', 'Sockets & Plugs', 'LED Lighting', 'Paint Brushes', 'Sandpaper', 'Cutting Discs', 'Cabinet Fittings']);
 const BRANDS = ['Prime', 'Apex', 'Zenith', 'Vertex', 'Orion', 'Nova'];
 const SERIES = ['Std', 'Pro', 'Plus', 'Max'];
 const SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
@@ -42,7 +48,7 @@ export function buildSeed(): Data {
     for (let k = 0; k < 113; k++) {
       const size = Math.floor(k / 24) % 5;
       const base = (c[3] + r() * (c[4] - c[3])) * (1 + size * 0.1);
-      const pp = Math.max(3, Math.round(base));
+      const pp = Math.max(2, Math.round(base));
       const x = r();
       const q = () => Math.floor(r() * (r() < 0.12 ? 8 : 90));
       const stock = x < 0.3 ? [q(), 0, 0] : x < 0.55 ? [q(), q(), 0] : x < 0.75 ? [0, q(), q()] : x < 0.92 ? [q(), q(), q()] : [0, q(), 0];
@@ -53,6 +59,10 @@ export function buildSeed(): Data {
         cat: c[0], unit: c[2], pp, prices: [1.38, 1.28, 1.2, 1.12].map((m) => Math.round(pp * m)),
         stock, min: pp > 1500 ? 3 : r() < 0.5 ? 10 : 20, shopOnly: x < 0.3,
       });
+      // Things sold loose but bought in boxes: stock is counted in pieces, and the box size differs from product to product.
+      const pk = PACKS[c[0]];
+      if (pk) { const p = products[products.length - 1]; const box = pk.boxes[k % pk.boxes.length]; p.packs = [...pk.small, { name: 'Box', per: box }]; p.stock = p.stock.map((q) => q * box); p.min = p.min * box; }
+      else if (DOZEN.has(c[0])) products[products.length - 1].packs = [{ name: 'Dozen', per: 12 }];
     }
   });
 
@@ -175,7 +185,7 @@ export function buildSeed(): Data {
   const data: Data = {
     products, vendors, purchases, payments, staff, attendance, leaves, payAdjusts, payslips, carpenters, carpPayouts: [],
     customers, bills, returns: [], stockIns: [], transfers: [], adjustments: [],
-    settings: { pointsPer1000: 10, repeatDays: 15, estimateDays: 7, linkDays: 60, lateAfter: '10:00', weeklyOff: 0 },
+    settings: { pointsPer1000: 10, repeatDays: 15, estimateDays: 7, linkDays: 60, lateAfter: '10:00', weeklyOff: 0, locations: [...DEFAULT_LOCS] },
     counters: { est: e + 1, quo: q + 1, ret: 1, pur: po + 1, sin: 1, pay: 1 },
   };
   salesmen.slice(0, 3).forEach((st, i) => {

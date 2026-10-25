@@ -33,7 +33,7 @@ export default function Transfers() {
 
   const problem = !p ? 'Pick a product to begin' : avail <= 0 ? 'There is nothing to move from here' : qty < 1 ? 'Choose how many to move' : qty > avail ? `Only ${avail} available here` : from === to ? 'Choose two different places' : '';
   const valid = !problem;
-  const after = p ? p.stock.map((q, i) => (valid ? (i === from ? q - qty : i === to ? q + qty : q) : q)) : [0, 0, 0];
+  const after = p ? p.stock.map((q, i) => (valid ? (i === from ? q - qty : i === to ? q + qty : q) : q)) : LOCS.map(() => 0);
 
   const go = () => {
     if (!p || !valid) return;
@@ -82,10 +82,10 @@ export default function Transfers() {
             <>
               <div className={`${card} fade-up p-5`}>
                 <div className="mb-3 font-display text-[22px] font-semibold tracking-tight">Take it from where?</div>
-                <div className="grid gap-3 sm:grid-cols-3">{[0, 1, 2].map((i) => <LocCard key={i} i={i} role="from" />)}</div>
+                <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">{LOCS.map((_, i) => <LocCard key={i} i={i} role="from" />)}</div>
                 <div className="my-4 flex items-center gap-3 text-steel"><span className="h-px flex-1 bg-line" /><ArrowDown className="h-5 w-5" /><span className="h-px flex-1 bg-line" /></div>
                 <div className="mb-3 font-display text-[22px] font-semibold tracking-tight">And send it to?</div>
-                <div className="grid gap-3 sm:grid-cols-3">{[0, 1, 2].map((i) => <LocCard key={i} i={i} role="to" />)}</div>
+                <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">{LOCS.map((_, i) => <LocCard key={i} i={i} role="to" />)}</div>
                 {p.shopOnly && <p className="mt-3 text-xs text-steel">This is a direct-to-shop product. You can still move it, but it normally stays in the Main Shop.</p>}
               </div>
 
@@ -102,7 +102,7 @@ export default function Transfers() {
                 {avail > 1 && <input type="range" min={1} max={avail} value={Math.min(Math.max(qty, 1), avail)} onChange={(e) => setQty(+e.target.value)} className="mt-4 w-full cursor-pointer !border-0 !bg-transparent !p-0 accent-[#B8892B]" aria-label="Quantity" />}
 
                 <div className="mt-5 text-sm font-medium text-steel">After this move</div>
-                <div className="mt-2 grid grid-cols-3 gap-3">
+                <div className="mt-2 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
                   {LOCS.map((n, i) => {
                     const delta = valid ? (i === from ? -qty : i === to ? qty : 0) : 0;
                     return (

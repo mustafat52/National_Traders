@@ -20,9 +20,9 @@ export const needsPicker = (p: Product) => locsWithStock(p).length > 1;
 
 /** Default allocation: single-location items auto-allocate; multi-location items fill Main Shop first. */
 export function autoAlloc(p: Product, qty: number): number[] {
-  const alloc = [0, 0, 0];
+  const alloc = p.stock.map(() => 0);
   let left = qty;
-  for (const i of [0, 1, 2]) {
+  for (let i = 0; i < p.stock.length; i++) {
     const take = Math.min(left, p.stock[i]);
     alloc[i] = take; left -= take;
   }
@@ -54,4 +54,15 @@ export function download(name: string, text: string) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
   a.download = name; a.click();
+}
+
+/** "3 Dozen (36 pcs)" for a line counted in packs, plain "36 pcs" otherwise. */
+export const qtyText = (qty: number, unit: string, pack?: { name: string; per: number }) =>
+  pack && pack.per > 1 && qty % pack.per === 0 ? `${qty / pack.per} ${pack.name} (${qty} ${unit})` : `${qty} ${unit}`;
+/** Stock as the biggest pack plus the rest: 1,240 pcs with a Box of 400 becomes "3 Box + 40 pcs". */
+export function packBreakdown(qty: number, unit: string, packs?: { name: string; per: number }[]) {
+  const big = [...(packs ?? [])].filter((x) => x.per > 1).sort((a, b) => b.per - a.per)[0];
+  if (!big || qty < big.per) return `${qty} ${unit}`;
+  const n = Math.floor(qty / big.per); const rest = qty - n * big.per;
+  return `${n} ${big.name}${rest ? ` + ${rest} ${unit}` : ''}`;
 }

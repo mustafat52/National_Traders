@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, ChevronDown, Download, PackagePlus, Receipt, Store, Truck, X } from 'lucide-react';
 import { useStore, useProductMap } from '@/lib/store';
-import { LOCS, Product, StockIn as StockInRec, TIER_NAMES } from '@/lib/types';
+import { LOCS, LOC_COLORS, LOC_TINTS, Product, StockIn as StockInRec, TIER_NAMES } from '@/lib/types';
 import { download, fmtDate, money, toCsv } from '@/lib/rules';
 import { vendorBalance } from '@/lib/selectors';
 import { timeAgo } from '@/lib/time';
@@ -13,8 +13,8 @@ import { Rupee } from '@/components/Rupee';
 import { Stepper } from '@/components/Stepper';
 import { Scanner } from '@/components/ui';
 
-const LOCC = ['#B8892B', '#8FA05E', '#EAD9A3'];
-const LOC_TINT = ['bg-sage-bg text-sage-fg', 'bg-sky-bg text-sky-fg', 'bg-lilac-bg text-lilac-fg'];
+const LOCC = LOC_COLORS;
+const LOC_TINT = LOC_TINTS;
 const card = 'rounded-[22px] border border-line bg-panel';
 interface L { pid: string; qty: number[] }
 type Source = 'vendor' | 'none';
@@ -30,7 +30,7 @@ export default function StockIn() {
 
   const add = (p: Product) => {
     setDone(null); setErr('');
-    setLines((ls) => (ls.some((x) => x.pid === p.id) ? ls : [...ls, { pid: p.id, qty: [0, 0, 0] }]));
+    setLines((ls) => (ls.some((x) => x.pid === p.id) ? ls : [...ls, { pid: p.id, qty: LOCS.map(() => 0) }]));
     setPrices((pr) => (pr[p.id] ? pr : { ...pr, [p.id]: p.pp }));
     setFocusId(p.id);
   };
@@ -42,10 +42,10 @@ export default function StockIn() {
   useEffect(() => { if (focusId) { document.getElementById(`qty-${focusId}-0`)?.focus(); setFocusId(''); } }, [focusId, lines]);
 
   const setQ = (i: number, k: number, v: number) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, qty: l.qty.map((q, m) => (m === k ? v : q)) } : l)));
-  const moveAll = (i: number, k: number) => setLines((ls) => ls.map((l, j) => { if (j !== i) return l; const t = l.qty.reduce((a, b) => a + b, 0); return { ...l, qty: [0, 0, 0].map((_, m) => (m === k ? t : 0)) }; }));
-  const splitEven = (i: number) => setLines((ls) => ls.map((l, j) => { if (j !== i) return l; const t = l.qty.reduce((a, b) => a + b, 0); const base = Math.floor(t / 3); return { ...l, qty: [t - 2 * base, base, base] }; }));
+  const moveAll = (i: number, k: number) => setLines((ls) => ls.map((l, j) => { if (j !== i) return l; const t = l.qty.reduce((a, b) => a + b, 0); return { ...l, qty: LOCS.map((_, m) => (m === k ? t : 0)) }; }));
+  const splitEven = (i: number) => setLines((ls) => ls.map((l, j) => { if (j !== i) return l; const t = l.qty.reduce((a, b) => a + b, 0); const n = LOCS.length; const base = Math.floor(t / n); return { ...l, qty: LOCS.map((_, m) => (m === 0 ? t - (n - 1) * base : base)) }; }));
 
-  const byLoc = useMemo(() => [0, 1, 2].map((k) => lines.reduce((a, l) => a + (l.qty[k] || 0), 0)), [lines]);
+  const byLoc = useMemo(() => LOCS.map((_, k) => lines.reduce((a, l) => a + (l.qty[k] || 0), 0)), [lines]);
   const units = byLoc.reduce((a, b) => a + b, 0);
   const counted = lines.filter((l) => l.qty.some((q) => q > 0)).length;
   const billTotal = lines.reduce((a, l) => a + (prices[l.pid] || 0) * l.qty.reduce((x, y) => x + y, 0), 0);
@@ -61,9 +61,9 @@ export default function StockIn() {
       setLines([]); setNote(''); setBillNo(''); setPrices({}); setErr('');
     } catch (e) { setErr((e as Error).message); }
   };
-  const exportCsv = () => download('stock-in-history.csv', toCsv([['No.', 'Date', 'Vendor', 'Vendor bill', 'Note', 'Product', 'SKU', 'Shop', 'Godown 1', 'Godown 2', 'Price'],
+  const exportCsv = () => download('stock-in-history.csv', toCsv([['No.', 'Date', 'Vendor', 'Vendor bill', 'Note', 'Product', 'SKU', ...LOCS, 'Price'],
     ...stockIns.flatMap((r) => { const pu = d.purchases.find((x) => x.id === r.purchaseId); const vn = vendors.find((v) => v.id === pu?.vendorId)?.name ?? '';
-      return r.lines.map((l) => [r.no, new Date(r.date).toLocaleString('en-IN'), vn, pu?.billNo ?? '', r.note, pm.get(l.pid)?.name ?? l.pid, pm.get(l.pid)?.sku ?? '', ...l.qty, pu?.lines.find((x) => x.pid === l.pid)?.price ?? '']); })]));
+      return r.lines.map((l) => [r.no, new Date(r.date).toLocaleString('en-IN'), vn, pu?.billNo ?? '', r.note, pm.get(l.pid)?.name ?? l.pid, pm.get(l.pid)?.sku ?? '', ...LOCS.map((_, k) => l.qty[k] || 0), pu?.lines.find((x) => x.pid === l.pid)?.price ?? '']); })]));
 
   const pill = (on: boolean) => `flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition ${on ? 'bg-white text-sage-fg shadow-sm' : 'text-steel hover:text-ink'}`;
 
@@ -109,7 +109,7 @@ export default function StockIn() {
                   <div className="min-w-0 flex-1">
                     <div className="font-display text-xl font-semibold leading-tight">{p.name}</div>
                     <div className="truncate text-xs text-steel">{productPath(p)}</div>
-                    <div className="mt-1 text-xs text-steel">Now in stock: Shop <b className="text-ink">{p.stock[0]}</b>, Godown 1 <b className="text-ink">{p.stock[1]}</b>, Godown 2 <b className="text-ink">{p.stock[2]}</b></div>
+                    <div className="mt-1 text-xs text-steel">Now in stock: {LOCS.map((n, k) => <span key={n} className="mr-2">{n.replace('Main ', '')} <b className="text-ink">{p.stock[k] ?? 0}</b></span>)}</div>
                   </div>
                   <button aria-label="Remove" className="rounded-lg p-1.5 text-steel hover:bg-paper" onClick={() => setLines(lines.filter((_, j) => j !== i))}><X className="h-5 w-5" /></button>
                 </div>
@@ -121,7 +121,7 @@ export default function StockIn() {
                   </div>
                 ) : (
                   <>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="mt-4 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
                       {LOCS.map((n, k) => (
                         <div key={n} className={`rounded-2xl p-3.5 ${LOC_TINT[k]}`}>
                           <div className="mb-2 text-sm font-medium">{n}</div>
@@ -136,6 +136,8 @@ export default function StockIn() {
                     </div>
                   </>
                 )}
+
+                {p.packs && p.packs.length > 0 && <PackAdd p={p} onAdd={(k, n) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, qty: x.qty.map((q, m) => (m === k ? (q || 0) + n : q)) } : x)))} />}
 
                 {vendorMode && (
                   <div className="mt-4 rounded-2xl bg-paper p-4">
@@ -222,7 +224,7 @@ function Entry({ r, by }: { r: StockInRec; by: string }) {
   const [open, setOpen] = useState(false); const pm = useProductMap();
   const { purchases, vendors } = useStore();
   const pu = r.purchaseId ? purchases.find((x) => x.id === r.purchaseId) : undefined; const vn = pu ? vendors.find((v) => v.id === pu.vendorId) : undefined;
-  const tot = [0, 1, 2].map((k) => r.lines.reduce((a, l) => a + l.qty[k], 0)); const units = tot.reduce((a, b) => a + b, 0);
+  const tot = LOCS.map((_, k) => r.lines.reduce((a, l) => a + (l.qty[k] || 0), 0)); const units = tot.reduce((a, b) => a + b, 0);
   return (
     <div className={`${card} overflow-hidden`}>
       <button className="flex w-full flex-wrap items-center gap-x-6 gap-y-2 p-4 text-left" onClick={() => setOpen(!open)}>
@@ -240,10 +242,26 @@ function Entry({ r, by }: { r: StockInRec; by: string }) {
             <li key={l.pid} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
               {p && <EmojiTile cat={p.cat} size={32} />}<span className="min-w-0 flex-1 truncate font-medium">{p?.name ?? l.pid}</span>
               {pr !== undefined && <span className="text-xs text-steel">{money(pr)} each</span>}
-              <span className="flex gap-1.5 text-xs">{LOCS.map((n, k) => (l.qty[k] > 0 ? <span key={n} className={`rounded-full px-2.5 py-0.5 font-medium ${LOC_TINT[k]}`}>{n.replace('Main ', '')} {l.qty[k]}</span> : null))}</span>
+              <span className="flex gap-1.5 text-xs">{LOCS.map((n, k) => ((l.qty[k] || 0) > 0 ? <span key={n} className={`rounded-full px-2.5 py-0.5 font-medium ${LOC_TINT[k]}`}>{n.replace('Main ', '')} {l.qty[k]}</span> : null))}</span>
             </li>); })}
         </ul>
       )}
+    </div>
+  );
+}
+/** Received in boxes or dozens? Type how many and pick the pack; the pieces are worked out and added to the chosen place. */
+function PackAdd({ p, onAdd }: { p: Product; onAdd: (loc: number, units: number) => void }) {
+  const packs = p.packs ?? []; const [n, setN] = useState(1); const [pk, setPk] = useState(0); const [loc, setLoc] = useState(0);
+  const per = packs[Math.min(pk, packs.length - 1)]?.per ?? 1;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-paper px-3.5 py-2.5 text-sm">
+      <span className="text-steel">Received in packs?</span>
+      <input type="number" min={1} aria-label="Number of packs" className="!w-20 !py-1.5 text-center" value={n || ''} onChange={(e) => setN(Math.max(0, Math.round(+e.target.value)))} />
+      <select aria-label="Pack" className="!py-1.5" value={pk} onChange={(e) => setPk(+e.target.value)}>{packs.map((k, i) => <option key={k.name} value={i}>{k.name} ({k.per} {p.unit})</option>)}</select>
+      <b className="text-ink">= {(n * per).toLocaleString('en-IN')} {p.unit}</b>
+      <span className="text-steel">into</span>
+      <select aria-label="Place" className="!py-1.5" value={p.shopOnly ? 0 : loc} disabled={!!p.shopOnly} onChange={(e) => setLoc(+e.target.value)}>{LOCS.map((l, i) => <option key={l} value={i}>{l}</option>)}</select>
+      <button type="button" disabled={n < 1} onClick={() => onAdd(p.shopOnly ? 0 : loc, n * per)} className="rounded-xl bg-black px-3 py-1.5 font-semibold text-gold-light disabled:opacity-40">Add</button>
     </div>
   );
 }

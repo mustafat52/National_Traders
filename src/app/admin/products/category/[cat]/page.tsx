@@ -1,5 +1,6 @@
 'use client';
 import { useMemo, useState } from 'react';
+import { LOCS } from '@/lib/types';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Download, Plus, Search } from 'lucide-react';
@@ -20,8 +21,8 @@ export default function CategoryPage() {
   }, [q, node]);
   if (!name || !node) return <div><Crumbs items={[{ label: 'Products', href: '/admin/products' }, { label: 'Not found' }]} /><p>This category has no products yet.</p></div>;
   const exportCat = () => download(`${slug(name)}.csv`, toCsv([
-    ['Company', 'Product', 'Variant', 'SKU', 'Main Shop', 'Godown 1', 'Godown 2', 'Total', 'Purchase price', 'Price A', 'Price B', 'Price C', 'Price D'],
-    ...node.brands.flatMap((b) => b.models.flatMap((m) => m.variants.map((p) => [b.name, m.name, p.variant ?? '', p.sku, p.stock[0], p.stock[1], p.stock[2], stockTotal(p), p.pp, ...p.prices]))),
+    ['Company', 'Product', 'Variant', 'SKU', ...LOCS, 'Total', 'Purchase price', 'Price A', 'Price B', 'Price C', 'Price D'],
+    ...node.brands.flatMap((b) => b.models.flatMap((m) => m.variants.map((p) => [b.name, m.name, p.variant ?? '', p.sku, ...LOCS.map((_, i) => p.stock[i] ?? 0), stockTotal(p), p.pp, ...p.prices]))),
   ]));
   const tint = TINTS[Math.max(0, CATEGORIES.indexOf(name)) % TINTS.length];
   return (

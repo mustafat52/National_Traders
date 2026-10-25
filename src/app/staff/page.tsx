@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Hammer, MessageCircle, Plus, Search, Trash2, X } from 'lucide-react';
 import { useStore, useProductMap, Draft } from '@/lib/store';
 import { LOCS, Product, TIER_NAMES } from '@/lib/types';
-import { autoAlloc, fmtDate, money, needsPicker, repeatHit, stockTotal } from '@/lib/rules';
+import { autoAlloc, fmtDate, money, needsPicker, packBreakdown, qtyText, repeatHit, stockTotal } from '@/lib/rules';
 import { Scanner } from '@/components/ui';
 import { ProductSearch, EmojiTile, productPath } from '@/components/ProductSearch';
 import { Stepper } from '@/components/Stepper';
@@ -49,8 +49,11 @@ function Bill({ draft, pm }: { draft: Draft; pm: Map<string, Product> }) {
   const patch = (p: Partial<Draft>) => d.patchDraft(draft.id, p);
   const setLines = (ls: Draft['lines']) => patch({ lines: ls });
 
-  const add = (p: Product) => { setErr(''); setLines(lines.some((x) => x.pid === p.id) ? lines.map((l) => (l.pid === p.id ? { ...l, qty: l.qty + 1, alloc: autoAlloc(p, l.qty + 1) } : l)) : [...lines, { pid: p.id, qty: 1, alloc: autoAlloc(p, 1) }]); };
+  const add = (p: Product) => { setErr(''); setLines(lines.some((x) => x.pid === p.id) ? lines.map((l) => (l.pid === p.id ? { ...l, qty: l.qty + (l.pack?.per ?? 1), alloc: autoAlloc(p, l.qty + (l.pack?.per ?? 1)) } : l)) : [...lines, { pid: p.id, qty: 1, alloc: autoAlloc(p, 1) }]); };
   const setQty = (pid: string, q: number) => { const n = Math.max(1, q); setLines(lines.map((l) => (l.pid === pid ? { ...l, qty: n, alloc: autoAlloc(pm.get(pid)!, n) } : l))); };
+  /** Count in a pack (Dozen, Box…) or in single pieces. The stock and the bill always work in pieces: 3 Dozen is 36. */
+  const setPack = (pid: string, pack?: { name: string; per: number }) => setLines(lines.map((l) => (l.pid === pid ? { ...l, pack, qty: pack?.per ?? 1, alloc: autoAlloc(pm.get(pid)!, pack?.per ?? 1) } : l)));
+  const setCount = (pid: string, n: number) => { const l = lines.find((x) => x.pid === pid)!; setQty(pid, Math.max(1, n) * (l.pack?.per ?? 1)); };
   const setAlloc = (pid: string, i: number, v: number) => setLines(lines.map((l) => (l.pid === pid ? { ...l, alloc: l.alloc.map((a, j) => (j === i ? Math.max(0, v) : a)) } : l)));
   const shortage = lines.some((l) => l.qty > stockTotal(pm.get(l.pid)!)); const allocBad = lines.some((l) => l.alloc.reduce((a, b) => a + b, 0) !== l.qty);
   const canBill = ready && lines.length > 0;
@@ -63,7 +66,7 @@ function Bill({ draft, pm }: { draft: Draft; pm: Map<string, Product> }) {
       const cid = d.upsertCustomer(draft.phone, t!);
       const online = mode === 'cash' ? 0 : mode === 'online' ? total : total - cashPart; const cash = mode === 'cash' ? total : mode === 'online' ? 0 : cashPart;
       const b = d.saveBill(kind, { referredBy: draft.carpenterId || undefined, needsCarpenter: draft.needsCarpenter, staffId: me, customerId: cid, tier: t!, cash: kind === 'estimate' ? 0 : cash, online: kind === 'estimate' ? 0 : online,
-        lines: lines.map((l) => ({ pid: l.pid, qty: l.qty, price: price(l.pid), alloc: kind === 'quotation' ? l.alloc : [0, 0, 0] })) });
+        lines: lines.map((l) => ({ pid: l.pid, qty: l.qty, price: price(l.pid), alloc: kind === 'quotation' ? l.alloc : LOCS.map(() => 0), pack: l.pack })) });
       setPay(false); setErr(''); patch({ result: { no: b.no, kind: b.kind, total: b.total, points: b.points, code: b.code, carpenter: carp?.name, needsCarpenter: !!draft.needsCarpenter } });
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not save'); }
   };
@@ -135,12 +138,19 @@ function Bill({ draft, pm }: { draft: Draft; pm: Map<string, Product> }) {
         return (
           <div key={l.pid} className={card}>
             <div className="flex items-start gap-3">
-              <EmojiTile cat={p.cat} /><div className="min-w-0 flex-1"><div className="font-medium leading-5">{p.name}</div><div className="truncate text-xs text-steel">{productPath(p)}</div><div className="text-xs text-steel">{money(price(l.pid))} per {p.unit} · stock {stockTotal(p)}</div></div>
+              <EmojiTile cat={p.cat} /><div className="min-w-0 flex-1"><div className="font-medium leading-5">{p.name}</div><div className="truncate text-xs text-steel">{productPath(p)}</div><div className="text-xs text-steel">{money(price(l.pid))} per {p.unit} · stock {packBreakdown(stockTotal(p), p.unit, p.packs)}</div></div>
               <button onClick={() => setLines(lines.filter((x) => x.pid !== l.pid))} aria-label={`Remove ${p.name}`} className="rounded-xl p-2 text-steel hover:bg-blush-bg hover:text-blush-fg"><Trash2 className="h-4 w-4" /></button>
             </div>
             {rep && <div className="mt-2 flex gap-2 rounded-xl bg-butter-bg px-3 py-2 text-xs text-butter-fg"><AlertTriangle className="h-4 w-4 shrink-0" /><span>Bought by this customer on <b>{fmtDate(rep.date)}</b> at <b>{money(rep.price)}</b> ({rep.qty} {p.unit}).</span></div>}
-            <div className="mt-3 flex items-center justify-between"><Stepper value={l.qty} min={1} onChange={(n) => setQty(l.pid, n)} /><div className="font-display text-xl font-semibold">{money(l.qty * price(l.pid))}</div></div>
-            {l.qty > stockTotal(p) && <div className="mt-2 text-sm font-medium text-blush-fg">Not enough stock (only {stockTotal(p)})</div>}
+            <div className="mt-3 flex items-center justify-between"><Stepper value={l.qty / (l.pack?.per ?? 1)} min={1} onChange={(n) => setCount(l.pid, n)} /><div className="font-display text-xl font-semibold">{money(l.qty * price(l.pid))}</div></div>
+            {p.packs && p.packs.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-sm" role="group" aria-label="Count in">
+                <span className="text-xs text-steel">Count in</span>
+                {[undefined, ...p.packs].map((k) => { const on = (k?.name ?? '') === (l.pack?.name ?? ''); return (
+                  <button key={k?.name ?? 'base'} onClick={() => setPack(l.pid, k)} className={`rounded-full px-3 py-1 font-medium ${on ? 'bg-black text-gold-light' : 'border border-line bg-white'}`}>{k ? `${k.name} (${k.per})` : p.unit}</button>); })}
+                {l.pack && <span className="ml-auto text-xs font-semibold text-ink">= {qtyText(l.qty, p.unit)}</span>}
+              </div>)}
+            {l.qty > stockTotal(p) && <div className="mt-2 text-sm font-medium text-blush-fg">Not enough stock (only {packBreakdown(stockTotal(p), p.unit, p.packs)})</div>}
             {needsPicker(p) ? (
               <div className="mt-3 rounded-2xl bg-sage-bg/60 p-3"><div className="mb-2 text-xs font-semibold text-sage-fg">Take from (stock is in several places)</div>
                 <div className="grid grid-cols-3 gap-2">{LOCS.map((n, i) => <label key={n} className="text-center text-[11px] text-steel">{n}<span className="block">has {p.stock[i]}</span>

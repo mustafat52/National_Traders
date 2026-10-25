@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { useStore, useProductMap } from '@/lib/store';
-import { LOCS, TIER_NAMES } from '@/lib/types';
+import { LOCS, Product, TIER_NAMES } from '@/lib/types';
 import { dk, fmtDate, isExpiredEstimate, isLow, money, stockTotal } from '@/lib/rules';
 import { vendorAging, vendorBalance } from '@/lib/selectors';
 import { computePay, dayState, hm, monthLabel, monthsInRange, rangeKeys, workedMinutes } from '@/lib/payroll';
@@ -178,7 +178,7 @@ function Stock({ from, to, set, inR }: { from: string; to: string; set: (a: stri
       <Panel title="Every product" sub="Stock by location, as of now" action={<Seg value={low} onChange={setLow} options={[['all', 'All'], ['low', 'Low stock only']]} />}>
         <Table csv="stock-report" rows={rows} pageSize={15} search={(p, q) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q)} cols={[
           { h: 'SKU', v: (p) => p.sku }, { h: 'Product', v: (p) => <span>{p.name}{p.shopOnly && <span className="ml-2 text-xs text-steel">shop only</span>}</span>, csv: (p) => p.name }, { h: 'Category', v: (p) => `${emojiFor(p.cat)} ${p.cat}`, csv: (p) => p.cat },
-          { h: 'Shop', v: (p) => p.stock[0], right: true }, { h: 'Godown 1', v: (p) => p.stock[1], right: true }, { h: 'Godown 2', v: (p) => p.stock[2], right: true },
+          ...LOCS.map((n, i) => ({ h: n, v: (p: Product) => p.stock[i] ?? 0, right: true })),
           { h: 'Total', v: (p) => <span className={isLow(p) ? 'font-semibold text-blush-fg' : ''}>{stockTotal(p)}</span>, csv: (p) => stockTotal(p), right: true }, { h: 'Minimum', v: (p) => p.min, right: true }, { h: 'Value at cost', v: (p) => money(val(p)), csv: val, right: true },
         ]} />
       </Panel>

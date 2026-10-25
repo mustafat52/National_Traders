@@ -1,4 +1,12 @@
-export const LOCS = ['Main Shop', 'Godown 1', 'Godown 2'];
+/** Storage places. The owner can add more in Settings; this list is kept in step with the saved settings (see syncLocs). */
+export const DEFAULT_LOCS = ['Main Shop', 'Godown 1', 'Godown 2'];
+export const LOCS: string[] = [...DEFAULT_LOCS];
+export const syncLocs = (names?: string[]) => { const n = names && names.length ? names : DEFAULT_LOCS; LOCS.length = 0; LOCS.push(...n); };
+/** Colours for storage places; wraps around when there are more places than colours. */
+export const LOC_COLORS = ['#B8892B', '#8FA05E', '#EAD9A3', '#8FB4D6', '#D9705F', '#A99BDD'];
+export const LOC_TINTS = ['bg-sage-bg text-sage-fg', 'bg-sky-bg text-sky-fg', 'bg-lilac-bg text-lilac-fg', 'bg-butter-bg text-butter-fg', 'bg-blush-bg text-blush-fg', 'bg-paper text-ink'];
+/** A bigger pack the product comes in, e.g. Dozen = 12 pieces, Box = 400 pieces. Stock and prices are always per base unit. */
+export interface Pack { name: string; per: number; }
 export const TIER_NAMES = ['Category A', 'Category B', 'Category C', 'Category D'];
 
 export interface Product {
@@ -7,6 +15,7 @@ export interface Product {
   prices: number[];      // selling price per customer category (4)
   stock: number[];       // stock per location (3)
   min: number;           // low-stock threshold (total quantity)
+  packs?: Pack[];        // other ways it is bought and sold: each pack holds `per` base units
   brand?: string;        // company, e.g. "Prime"
   model?: string;        // product within the company (size/model), e.g. "Switch XL"
   variant?: string;      // the sellable variant, e.g. "Pro" (each variant is one SKU)
@@ -36,7 +45,7 @@ export interface PayFigures {
 export interface Payslip extends PayFigures { id: string; no: string; staffId: string; month: string; paidOn: string; mode: string; }
 export interface Customer { id: string; phone: string; name: string; tier: number; }
 /** estPrice is set when the line came from an estimate: the price quoted then (price is the one the owner chose at conversion). */
-export interface BillLine { pid: string; qty: number; price: number; alloc: number[]; estPrice?: number; }
+export interface BillLine { pid: string; qty: number; price: number; alloc: number[]; estPrice?: number; /** how the salesman counted it, e.g. 3 Dozen; qty is always in base units (36) */ pack?: Pack; }
 export interface Bill {
   id: string; no: string; kind: 'estimate' | 'quotation'; code: string; date: string;
   staffId: string; customerId: string; tier: number; lines: BillLine[]; total: number;
@@ -63,7 +72,7 @@ export interface ReturnRec {
 export interface StockIn { id: string; no: string; date: string; by: string; note: string; lines: { pid: string; qty: number[] }[]; purchaseId?: string; }
 export interface Transfer { id: string; date: string; pid: string; from: number; to: number; qty: number; by: string; }
 export interface Adjustment { id: string; date: string; pid: string; loc: number; from: number; to: number; reason: string; by: string; }
-export interface Settings { pointsPer1000: number; repeatDays: number; estimateDays: number; linkDays: number; lateAfter: string; weeklyOff: number; }
+export interface Settings { pointsPer1000: number; repeatDays: number; estimateDays: number; linkDays: number; lateAfter: string; weeklyOff: number; locations?: string[]; }
 export interface Counters { est: number; quo: number; ret: number; pur: number; sin: number; pay: number; }
 export interface Data {
   products: Product[]; vendors: Vendor[]; purchases: Purchase[];payments: VendorPayment[];

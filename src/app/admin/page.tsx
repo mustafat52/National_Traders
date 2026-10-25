@@ -5,7 +5,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { useStore } from '@/lib/store';
 import { dk, fmtTime, isExpiredEstimate, isLow, mk, money, stockTotal } from '@/lib/rules';
 import { salesOn, staffPoints, vendorAging, vendorBalance } from '@/lib/selectors';
-import { LOCS, Staff } from '@/lib/types';
+import { LOCS, LOC_COLORS, Staff } from '@/lib/types';
 import { CountUp, GrowBar } from '@/components/CountUp';
 import { ownerOf } from '@/lib/owners';
 
@@ -73,7 +73,7 @@ export default function Dashboard() {
 
   /* ---------- stock + people ---------- */
   const where = useMemo(() => LOCS.map((name, i) => ({ name, units: d.products.reduce((a, p) => a + p.stock[i], 0), cost: d.products.reduce((a, p) => a + p.stock[i] * p.pp, 0) })), [d.products]);
-  const totalUnits = Math.max(1, where.reduce((a, w) => a + w.units, 0)); const LOCC = ['#B8892B', '#8FA05E', '#EAD9A3'];
+  const totalUnits = Math.max(1, where.reduce((a, w) => a + w.units, 0)); const LOCC = LOC_COLORS;
   const running = useMemo(() => low.filter((p) => stockTotal(p) > 0).sort((a, b) => stockTotal(a) / Math.max(1, a.min) - stockTotal(b) / Math.max(1, b.min)).slice(0, 6), [low]);
   const floor = d.attendance.filter((a) => a.date === today && !a.out && !a.gaps.some((g) => !g.back)).map((a) => ({ a, onBreak: a.breaks.some((b) => !b.e) }));
   const salesmen = d.staff.filter((s) => s.role === 'salesman');

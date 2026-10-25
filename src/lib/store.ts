@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { buildSeed } from './seed';
-import { AdjustKind, Bill, BillLine, Data, Purchase, ReturnRec, Settings, Staff, Vendor } from './types';
+import { LOCS, Pack, syncLocs, AdjustKind, Bill, BillLine, Data, Purchase, ReturnRec, Settings, Staff, Vendor } from './types';
 import { calcPoints, dk, money, pad, uid } from './rules';
 import { carpRows } from './carpenters';
 import { computePay, figuresOf, leaveDays, leaveLocked, monthLabel } from './payroll';
@@ -14,7 +14,7 @@ export interface Session { role: 'admin' | 'staff'; staffId: string; owner?: str
 export interface BillDraft { staffId: string; customerId: string; tier: number; lines: BillLine[]; cash: number; online: number; fromEstimate?: string; referredBy?: string; needsCarpenter?: boolean; }
 export interface ConvertDraft { estimateId: string; }
 /** A bill being made at the counter. A salesman can keep several open at once (a crowd in the shop) and switch between them. */
-export interface DraftLine { pid: string; qty: number; alloc: number[]; }
+export interface DraftLine { pid: string; qty: number; alloc: number[]; pack?: Pack; }
 export interface DraftResult { no: string; kind: 'estimate' | 'quotation'; total: number; points: number; code: string; carpenter?: string; needsCarpenter?: boolean; }
 export interface Draft { id: string; staffId: string; phone: string; tier: number | null; carpenterId?: string | null; needsCarpenter?: boolean; lines: DraftLine[]; createdAt: string; result?: DraftResult; }
 /** Present when the delivery came with a vendor bill: creates the bill (money owed) and updates purchase prices. */
@@ -50,6 +50,9 @@ interface Actions {
   convertEstimate: (estimateId: string, choices: { pid: string; price: number; alloc: number[] }[], cash: number, online: number) => Bill;
   processReturn: (r: { kind: 'sales' | 'damage'; billId: string; staffId: string; lines: { pid: string; qty: number; loc: number }[]; cash: number; online: number }) => void;
   updateSettings: (s: Settings) => void;
+  /** Owner only. Adds a storage place (a new godown); every product gets 0 stock there. */
+  addLocation: (name: string) => void;
+  renameLocation: (index: number, name: string) => void;
   newDraft: () => string;
   patchDraft: (id: string, patch: Partial<Omit<Draft, 'id' | 'staffId'>>) => void;
   closeDraft: (id: string) => void;
@@ -186,7 +189,7 @@ export const useStore = create<Store>()(
         // Direct-to-shop products always land in Main Shop, whatever the entry says.
         const clean = lines.map((l) => {
           const sum = l.qty.reduce((a, b) => a + (b || 0), 0);
-          return { pid: l.pid, qty: pm.get(l.pid)?.shopOnly ? [sum, 0, 0] : [0, 1, 2].map((i) => l.qty[i] || 0) };
+          return { pid: l.pid, qty: pm.get(l.pid)?.shopOnly ? [sum, ...LOCS.slice(1).map(() => 0)] : LOCS.map((_, i) => l.qty[i] || 0) };
         }).filter((l) => l.qty.some((q) => q > 0));
         if (!clean.length) throw new Error('Enter a quantity for at least one product');
         const now = new Date().toISOString(); const n = s.counters.sin;
@@ -229,7 +232,7 @@ export const useStore = create<Store>()(
           for (const l of d.lines) {
             const p = pm.get(l.pid)!;
             if (l.alloc.reduce((a, b) => a + b, 0) !== l.qty) throw new Error(`Dispatch quantities for "${p.name}" must add up to ${l.qty}`);
-            l.alloc.forEach((a, i) => { if (a > p.stock[i]) throw new Error(`Only ${p.stock[i]} of "${p.name}" in ${['Main Shop', 'Godown 1', 'Godown 2'][i]}`); });
+            l.alloc.forEach((a, i) => { if (a > p.stock[i]) throw new Error(`Only ${p.stock[i]} of "${p.name}" in ${LOCS[i] ?? 'place ' + (i + 1)}`); });
           }
           if (Math.round(d.cash + d.online) !== Math.round(total)) throw new Error('Payment amounts must add up to the bill total');
         }
@@ -264,7 +267,7 @@ export const useStore = create<Store>()(
         const lines: BillLine[] = choices.map((c) => {
           const o = est.lines.find((l) => l.pid === c.pid); if (!o) throw new Error('An item is not part of this estimate');
           if (!(c.price > 0)) throw new Error('Every price must be more than zero');
-          return { pid: c.pid, qty: o.qty, price: Math.round(c.price), alloc: c.alloc, estPrice: o.price };
+          return { pid: c.pid, qty: o.qty, price: Math.round(c.price), alloc: c.alloc, estPrice: o.price, pack: o.pack };
         });
         // Points go to est.staffId: the salesman who made the estimate, not the owner.
         const nb = get().saveBill('quotation', { referredBy: est.referredBy, needsCarpenter: est.needsCarpenter, staffId: est.staffId, customerId: est.customerId, tier: est.tier, lines, cash, online, fromEstimate: est.id });
@@ -322,19 +325,30 @@ export const useStore = create<Store>()(
       }),
       setActiveDraft: (id) => set({ activeDraft: id }),
 
-      updateSettings: (settings) => set({ settings }),
-      resetDemo: () => set({ ...buildSeed(), session: null, insideShop: true, convert: null, drafts: [], activeDraft: null }),
+      updateSettings: (settings) => set((s) => ({ settings: { ...settings, locations: s.settings.locations } })),
+      addLocation: (name) => { ownerOnly(get()); const n = name.trim().replace(/\s+/g, ' ');
+        if (n.length < 2) throw new Error('Give the place a name, for example Godown 3');
+        if (LOCS.some((x) => x.toLowerCase() === n.toLowerCase())) throw new Error('There is already a place with this name');
+        if (LOCS.length >= 12) throw new Error('A maximum of 12 storage places is supported');
+        set((s) => ({ settings: { ...s.settings, locations: [...LOCS, n] }, products: s.products.map((p) => ({ ...p, stock: [...p.stock, ...Array(Math.max(0, LOCS.length + 1 - p.stock.length)).fill(0)] })) })); },
+      renameLocation: (i, name) => { ownerOnly(get()); const n = name.trim().replace(/\s+/g, ' ');
+        if (n.length < 2) throw new Error('Give the place a name');
+        if (LOCS.some((x, j) => j !== i && x.toLowerCase() === n.toLowerCase())) throw new Error('There is already a place with this name');
+        set((s) => ({ settings: { ...s.settings, locations: LOCS.map((x, j) => (j === i ? n : x)) } })); },
+      resetDemo: () => { syncLocs(); set({ ...buildSeed(), session: null, insideShop: true, convert: null, drafts: [], activeDraft: null }); },
     }),
     {
-      name: 'nt-demo-v7', storage: createJSONStorage(() => storage),
+      name: 'nt-demo-v8', storage: createJSONStorage(() => storage),
       // Saved data from an older version is merged over today's defaults, so newer fields (stockIns, counters.sin) always exist.
       merge: (persisted, current) => {
-        const p = (persisted ?? {}) as Partial<Store>;
+        const p = (persisted ?? {}) as Partial<Store>; syncLocs(p.settings?.locations ?? current.settings.locations);
         return { ...current, ...p, stockIns: p.stockIns ?? current.stockIns, drafts: p.drafts ?? [], payAdjusts: p.payAdjusts ?? current.payAdjusts, payslips: p.payslips ?? current.payslips, carpenters: p.carpenters ?? current.carpenters, carpPayouts: p.carpPayouts ?? current.carpPayouts, counters: { ...current.counters, ...(p.counters ?? {}) }, settings: { ...current.settings, ...(p.settings ?? {}) } } as Store;
       },
     }
   )
 );
+// keep the shared list of storage places in step with the saved settings, before any screen renders
+useStore.subscribe((st) => syncLocs(st.settings.locations));
 export const useProductMap = () => { const p = useStore((s) => s.products); return useMapMemo(p); };
 import { useMemo } from 'react';
 function useMapMemo(p: Data['products']) { return useMemo(() => new Map(p.map((x) => [x.id, x])), [p]); }

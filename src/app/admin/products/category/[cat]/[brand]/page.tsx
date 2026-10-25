@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { LOCS, LOC_COLORS } from '@/lib/types';
 import { useParams } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import { CATEGORIES } from '@/lib/seed';
@@ -9,7 +10,7 @@ import { isLow, money, stockTotal } from '@/lib/rules';
 import { Btn } from '@/components/ui';
 import { Crumbs } from '@/components/Crumbs';
 
-const LOCC = ['#B8892B', '#8FA05E', '#EAD9A3'];
+const LOCC = LOC_COLORS;
 const PRICE_TINT = ['bg-sage-bg text-sage-fg', 'bg-sky-bg text-sky-fg', 'bg-butter-bg text-butter-fg', 'bg-lilac-bg text-lilac-fg'];
 
 export default function BrandPage() {
@@ -60,7 +61,7 @@ export default function BrandPage() {
                       <div className="mt-4 flex items-baseline gap-1.5"><span className="font-display text-[34px] font-semibold leading-none">{total.toLocaleString('en-IN')}</span><span className="text-sm text-steel">{p.unit} in stock</span></div>
                       <div className="mt-2 flex h-2 gap-0.5 overflow-hidden rounded-full bg-paper">{p.stock.map((q, i) => (q > 0 ? <div key={i} className="rounded-full" style={{ width: `${(q / total) * 100}%`, background: LOCC[i] }} /> : null))}</div>
                       <div className="mt-2 grid grid-cols-3 gap-1 text-xs text-steel">
-                        {['Shop', 'G1', 'G2'].map((l, i) => <div key={l} title={['Main Shop', 'Godown 1', 'Godown 2'][i]} className="whitespace-nowrap"><span className="mr-1 inline-block h-2 w-2 rounded-full align-middle" style={{ background: LOCC[i] }} />{l}<div className={`font-display text-base font-semibold ${p.stock[i] ? 'text-ink' : 'text-steel/40'}`}>{p.stock[i]}</div></div>)}
+                        {LOCS.map((n) => n.replace('Main Shop', 'Shop').replace('Godown ', 'G')).map((l, i) => <div key={l} title={LOCS[i]} className="whitespace-nowrap"><span className="mr-1 inline-block h-2 w-2 rounded-full align-middle" style={{ background: LOCC[i] }} />{l}<div className={`font-display text-base font-semibold ${p.stock[i] ? 'text-ink' : 'text-steel/40'}`}>{p.stock[i] ?? 0}</div></div>)}
                       </div>
 
                       <div className="mt-4 grid grid-cols-2 gap-2">

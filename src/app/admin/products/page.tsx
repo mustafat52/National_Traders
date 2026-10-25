@@ -1,5 +1,6 @@
 'use client';
 import { useMemo, useState } from 'react';
+import { LOCS } from '@/lib/types';
 import Link from 'next/link';
 import { Download, Plus, Search } from 'lucide-react';
 import { useStore } from '@/lib/store';
@@ -19,8 +20,8 @@ export default function Products() {
   const sections = [...SECTIONS, ...(extra.length ? [{ title: 'Other', cats: extra }] : [])];
   const totalBrands = new Set(products.map((p) => p.brand)).size;
   const exportAll = () => download('price-list.csv', toCsv([
-    ['Category', 'Company', 'Product', 'Variant', 'SKU', 'Main Shop', 'Godown 1', 'Godown 2', 'Total', 'Purchase price', 'Price A', 'Price B', 'Price C', 'Price D'],
-    ...products.map((p) => [p.cat, p.brand ?? '', p.model ?? '', p.variant ?? '', p.sku, p.stock[0], p.stock[1], p.stock[2], stockTotal(p), p.pp, ...p.prices]),
+    ['Category', 'Company', 'Product', 'Variant', 'SKU', ...LOCS, 'Total', 'Purchase price', 'Price A', 'Price B', 'Price C', 'Price D'],
+    ...products.map((p) => [p.cat, p.brand ?? '', p.model ?? '', p.variant ?? '', p.sku, ...LOCS.map((_, i) => p.stock[i] ?? 0), stockTotal(p), p.pp, ...p.prices]),
   ]));
 
   return (

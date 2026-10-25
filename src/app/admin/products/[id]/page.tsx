@@ -9,11 +9,11 @@ import { CATEGORIES } from '@/lib/seed';
 import { emojiFor, slug } from '@/lib/categories';
 import { useCatalog } from '@/lib/catalog';
 import { LOCS, Product, TIER_NAMES } from '@/lib/types';
-import { fmtDate, money, uid } from '@/lib/rules';
+import { fmtDate, money, packBreakdown, uid } from '@/lib/rules';
 import { Btn, Card, DataTable, Field, PageTitle } from '@/components/ui';
 import { Crumbs } from '@/components/Crumbs';
 
-const blank = (): Product => ({ id: uid('NT-'), sku: '', name: '', cat: CATEGORIES[0], unit: 'pcs', pp: 0, prices: [0, 0, 0, 0], stock: [0, 0, 0], min: 10, brand: '', model: '', variant: '' });
+const blank = (): Product => ({ id: uid('NT-'), sku: '', name: '', cat: CATEGORIES[0], unit: 'pcs', pp: 0, prices: [0, 0, 0, 0], stock: LOCS.map(() => 0), min: 10, brand: '', model: '', variant: '' });
 
 export default function ProductPage() {
   const { id } = useParams<{ id: string }>(); const router = useRouter(); const catalog = useCatalog();
@@ -40,7 +40,10 @@ export default function ProductPage() {
   const save = () => {
     const name = p.name || composed;
     if (!name || !p.sku) return alert('A SKU and a name (or company, product and variant) are required');
-    saveProduct({ ...p, name }); router.push(home);
+    const packs = (p.packs ?? []).filter((k) => k.name.trim() || k.per);
+    if (packs.some((k) => !k.name.trim() || !Number.isInteger(k.per) || k.per < 2)) return alert('Each pack needs a name and a whole number of more than 1 ' + p.unit + ' inside it');
+    if (new Set(packs.map((k) => k.name.trim().toLowerCase())).size !== packs.length) return alert('Two packs have the same name');
+    saveProduct({ ...p, name, packs: packs.length ? packs.map((k) => ({ name: k.name.trim(), per: k.per })) : undefined }); router.push(home);
   };
   return (
     <>
@@ -62,12 +65,29 @@ export default function ProductPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Name shown on bills"><input className="w-full" value={p.name} onChange={(e) => set('name', e.target.value)} placeholder={composed || 'Filled from company, product and variant'} /></Field>
             <Field label="SKU / QR code value"><input className="w-full" value={p.sku} onChange={(e) => set('sku', e.target.value)} /></Field>
-            <Field label="Unit"><input className="w-full" value={p.unit} onChange={(e) => set('unit', e.target.value)} /></Field>
+            <Field label="Smallest unit (stock and prices are counted in this)"><input className="w-full" value={p.unit} onChange={(e) => set('unit', e.target.value)} placeholder="pcs, kg, m…" /></Field>
             <Field label="Purchase price (admin only)"><input type="number" className="w-full" value={p.pp} onChange={(e) => set('pp', +e.target.value)} /></Field>
             <Field label="Low-stock alert at (total qty)"><input type="number" className="w-full" value={p.min} onChange={(e) => set('min', +e.target.value)} /></Field>
             <div className="sm:col-span-2"><label className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><input type="checkbox" className="h-4 w-4 !p-0" checked={!!p.shopOnly} onChange={(e) => set('shopOnly', e.target.checked)} />Comes directly to the shop (incoming stock always goes to Main Shop, no location asked)</label></div>
           </div>
-          <div className="text-sm font-semibold">Selling price per customer category</div>
+          <div className="text-sm font-semibold">What does it come in?</div>
+          <div className="rounded-xl bg-paper p-3">
+            <p className="mb-2 text-xs text-slate-600">If it is sold or bought in boxes, dozens or other packs, add them here. The salesman picks the pack at the counter and the stock reduces in {p.unit || 'units'} automatically. Example: a Box holds 400 {p.unit}, someone buys 3 Dozen, stock goes down by 36.</p>
+            <div className="space-y-2">{(p.packs ?? []).map((k, i) => (
+              <div key={i} className="flex flex-wrap items-center gap-2">
+                <input className="w-32" placeholder="Pack name" value={k.name} onChange={(e) => set('packs', (p.packs ?? []).map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+                <span className="text-sm text-slate-600">holds</span>
+                <input type="number" min={2} className="w-24" value={k.per || ''} onChange={(e) => set('packs', (p.packs ?? []).map((x, j) => (j === i ? { ...x, per: Math.round(+e.target.value) } : x)))} />
+                <span className="text-sm text-slate-600">{p.unit}</span>
+                <button type="button" aria-label="Remove pack" className="ml-auto rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-white" onClick={() => set('packs', (p.packs ?? []).filter((_, j) => j !== i))}>Remove</button>
+              </div>))}</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {!(p.packs ?? []).some((k) => k.name === 'Dozen') && <Btn variant="outline" type="button" onClick={() => set('packs', [...(p.packs ?? []), { name: 'Dozen', per: 12 }])}>+ Dozen (12)</Btn>}
+              <Btn variant="outline" type="button" onClick={() => set('packs', [...(p.packs ?? []), { name: (p.packs ?? []).some((k) => k.name === 'Box') ? '' : 'Box', per: 0 }])}>+ Add a pack (Box, Carton…)</Btn>
+            </div>
+            {(p.packs ?? []).filter((k) => k.per > 1 && k.name).slice(0, 1).map((k) => <p key={k.name} className="mt-2 text-xs text-slate-600">Check: 3 {k.name} = {3 * k.per} {p.unit}</p>)}
+          </div>
+          <div className="text-sm font-semibold">Selling price per customer category (per {p.unit || 'unit'})</div>
           <div className="grid gap-3 sm:grid-cols-4">{TIER_NAMES.map((t, i) => <Field key={t} label={`${t}, margin ${margin(i)}%`}><input type="number" className="w-full" value={p.prices[i]} onChange={(e) => set('prices', p.prices.map((x, j) => (j === i ? +e.target.value : x)))} /></Field>)}</div>
         </Card>
         <div className="space-y-4">
@@ -75,7 +95,8 @@ export default function ProductPage() {
             <div className="flex justify-center"><QRCodeSVG value={p.sku || 'NEW'} size={140} /></div><div className="mt-1 text-xs">{p.sku}</div><div className="text-xs text-slate-500">{p.name || composed}</div>
             <Btn variant="outline" className="no-print mt-3" onClick={() => window.print()}><Printer className="h-4 w-4" />Print label</Btn></Card>
           {!isNew && <Card><div className="mb-2 text-sm font-semibold">Stock by location</div>
-            {LOCS.map((l, i) => <div key={l} className="flex justify-between border-b border-slate-100 py-1 text-sm"><span>{l}</span><b>{p.stock[i]}</b></div>)}
+            {LOCS.map((l, i) => <div key={l} className="flex justify-between border-b border-slate-100 py-1 text-sm"><span>{l}</span><b>{p.stock[i] ?? 0}</b></div>)}
+            <div className="flex justify-between py-1 text-sm text-slate-600"><span>In all</span><b>{packBreakdown(p.stock.reduce((a, b) => a + b, 0), p.unit, p.packs)}</b></div>
             <Link href={`/admin/stockin?product=${p.id}`}><Btn className="mt-3 w-full">+ Add incoming stock</Btn></Link>
             {p.shopOnly && <div className="mt-1 text-xs text-slate-500">Direct-to-shop product: stock-in goes to Main Shop automatically.</div>}
             <div className="mt-3 text-xs font-medium text-slate-500">Adjust after physical count</div>

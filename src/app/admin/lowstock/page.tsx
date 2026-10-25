@@ -5,7 +5,7 @@ import { ArrowRightLeft, Check, Copy, Download, MessageCircle, PackagePlus, Penc
 import { useStore } from '@/lib/store';
 import { emojiFor } from '@/lib/categories';
 import { download, isLow, stockTotal, toCsv } from '@/lib/rules';
-import { LOCS, Product, Vendor } from '@/lib/types';
+import { LOCS, LOC_COLORS, Product, Vendor } from '@/lib/types';
 import { CountUp, GrowBar } from '@/components/CountUp';
 import { EmojiTile, productPath } from '@/components/ProductSearch';
 import { Stepper } from '@/components/Stepper';
@@ -17,7 +17,7 @@ const SEV: Record<Sev, { label: string; bar: string; chip: string; box: string }
   critical: { label: 'Critical', bar: '#E08A3C', chip: 'bg-butter-bg text-butter-fg', box: 'bg-butter-bg text-butter-fg' },
   low: { label: 'Running low', bar: '#8FA05E', chip: 'bg-sage-bg text-sage-fg', box: 'bg-sage-bg text-sage-fg' },
 };
-const LOCC = ['#B8892B', '#8FA05E', '#EAD9A3'];
+const LOCC = LOC_COLORS;
 const card = 'rounded-[22px] border border-line bg-panel';
 const PAGE = 30;
 const orderText = (v: Vendor | null, list: Item[]) =>
@@ -147,7 +147,7 @@ function Row({ i, vendor, onMin, delay }: { i: Item; vendor?: string; onMin: (p:
           <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${SEV[sev].chip}`}>{SEV[sev].label}</span>
         </div>
         <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-paper"><GrowBar pct={Math.max(3, Math.min(1, ratio) * 100)} color={SEV[sev].bar} /></div>
-        <div className="mt-1.5 flex flex-wrap gap-x-3 text-xs text-steel">{['Shop', 'G1', 'G2'].map((l, k) => <span key={l} className="whitespace-nowrap"><i className="mr-1 inline-block h-2 w-2 rounded-full align-middle" style={{ background: LOCC[k] }} />{l} <b className={p.stock[k] ? 'text-ink' : 'text-steel/50'}>{p.stock[k]}</b></span>)}</div>
+        <div className="mt-1.5 flex flex-wrap gap-x-3 text-xs text-steel">{LOCS.map((n) => n.replace('Main Shop', 'Shop').replace('Godown ', 'G')).map((l, k) => <span key={l} className="whitespace-nowrap"><i className="mr-1 inline-block h-2 w-2 rounded-full align-middle" style={{ background: LOCC[k] }} />{l} <b className={p.stock[k] ? 'text-ink' : 'text-steel/50'}>{p.stock[k] ?? 0}</b></span>)}</div>
         {edit && (
           <div className="fade-up mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-paper p-3 text-sm">
             <span className="text-steel">Alert me at or below</span><Stepper value={val} min={0} onChange={setVal} />
