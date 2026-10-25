@@ -3,24 +3,25 @@ import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { buildSeed } from './seed';
 import { AdjustKind, Bill, BillLine, Data, Purchase, ReturnRec, Settings, Staff, Vendor } from './types';
 import { calcPoints, dk, money, pad, uid } from './rules';
+import { carpRows } from './carpenters';
 import { computePay, figuresOf, leaveDays, leaveLocked, monthLabel } from './payroll';
 
 /**
  * DATA LAYER (demo). Every action below is what the Supabase backend will replace.
  * Screens only call these actions / read this state, never mutate data directly.
  */
-export interface Session { role: 'admin' | 'staff'; staffId: string; }
-export interface BillDraft { staffId: string; customerId: string; tier: number; lines: BillLine[]; cash: number; online: number; fromEstimate?: string; }
+export interface Session { role: 'admin' | 'staff'; staffId: string; owner?: string; }
+export interface BillDraft { staffId: string; customerId: string; tier: number; lines: BillLine[]; cash: number; online: number; fromEstimate?: string; referredBy?: string; needsCarpenter?: boolean; }
 export interface ConvertDraft { estimateId: string; }
 /** A bill being made at the counter. A salesman can keep several open at once (a crowd in the shop) and switch between them. */
 export interface DraftLine { pid: string; qty: number; alloc: number[]; }
-export interface DraftResult { no: string; kind: 'estimate' | 'quotation'; total: number; points: number; code: string; }
-export interface Draft { id: string; staffId: string; phone: string; tier: number | null; lines: DraftLine[]; createdAt: string; result?: DraftResult; }
+export interface DraftResult { no: string; kind: 'estimate' | 'quotation'; total: number; points: number; code: string; carpenter?: string; needsCarpenter?: boolean; }
+export interface Draft { id: string; staffId: string; phone: string; tier: number | null; carpenterId?: string | null; needsCarpenter?: boolean; lines: DraftLine[]; createdAt: string; result?: DraftResult; }
 /** Present when the delivery came with a vendor bill: creates the bill (money owed) and updates purchase prices. */
 export interface StockInBill { vendorId: string; billNo: string; prices: Record<string, number>; }
 
 interface Actions {
-  login: (staffId: string) => void;
+  login: (staffId: string, owner?: string) => void;
   logout: (left?: boolean) => void;
   setInside: (v: boolean) => void;
   endDay: () => void;
@@ -53,6 +54,16 @@ interface Actions {
   patchDraft: (id: string, patch: Partial<Omit<Draft, 'id' | 'staffId'>>) => void;
   closeDraft: (id: string) => void;
   setActiveDraft: (id: string | null) => void;
+  /* carpenters: all of these are owner only */
+  addCarpenter: (v: { name: string; phone: string; area: string; skill: string; ratePct: number }) => void;
+  updateCarpenter: (id: string, v: { name: string; phone: string; area: string; skill: string; ratePct: number; active: boolean }) => void;
+  /** Sends a carpenter to this bill's customer. The fee is what the shop pays the carpenter once the job is done. */
+  assignCarpenter: (billId: string, carpenterId: string, date: string, fee: number, note: string) => void;
+  setJobDone: (billId: string, done: boolean) => void;
+  removeJob: (billId: string) => void;
+  /** Fix who brought the customer after the bill was made. */
+  setReferrer: (billId: string, carpenterId: string | null) => void;
+  payCarpenter: (carpenterId: string, amount: number, mode: string, note: string) => void;
   resetDemo: () => void;
 }
 export type Store = Data & Actions & { session: Session | null; insideShop: boolean; convert: ConvertDraft | null; drafts: Draft[]; activeDraft: string | null };
@@ -62,6 +73,7 @@ const storage: StateStorage = {
   setItem: (n, v) => { try { window.localStorage.setItem(n, v); } catch { /* quota: demo keeps working in-memory */ } },
   removeItem: (n) => { try { window.localStorage.removeItem(n); } catch { /* ignore */ } },
 };
+const ownerOnly = (s: { session: { role: string } | null }) => { if (s.session?.role !== 'admin') throw new Error('Only the owner can do this'); };
 const code = () => Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
 
 export const useStore = create<Store>()(
@@ -70,9 +82,9 @@ export const useStore = create<Store>()(
       ...buildSeed(), session: null, insideShop: true, convert: null, drafts: [], activeDraft: null,
 
       /* ---------- session & attendance ---------- */
-      login: (staffId) => set((s) => {
+      login: (staffId, owner) => set((s) => {
         const st = s.staff.find((x) => x.id === staffId)!;
-        const session: Session = { role: st.role === 'admin' ? 'admin' : 'staff', staffId };
+        const session: Session = { role: st.role === 'admin' ? 'admin' : 'staff', staffId, ...(st.role === 'admin' ? { owner: owner ?? 'M' } : {}) };
         if (st.role === 'admin') return { session };
         const today = dk(new Date()); const now = new Date().toISOString();
         const has = s.attendance.find((a) => a.staffId === staffId && a.date === today);
@@ -229,6 +241,7 @@ export const useStore = create<Store>()(
           points: kind === 'quotation' ? calcPoints(total, s.settings.pointsPer1000) : 0,
           status: kind === 'quotation' ? 'paid' : 'open', fromEstimate: d.fromEstimate,
           convertedBy: d.fromEstimate ? s.session?.staffId : undefined, convertedAt: d.fromEstimate ? now.toISOString() : undefined,
+          referredBy: d.referredBy || undefined, needsCarpenter: d.needsCarpenter || undefined,
           validUntil: kind === 'estimate' ? new Date(now.getTime() + s.settings.estimateDays * 86400000).toISOString() : undefined,
         };
         set((st) => {
@@ -254,8 +267,24 @@ export const useStore = create<Store>()(
           return { pid: c.pid, qty: o.qty, price: Math.round(c.price), alloc: c.alloc, estPrice: o.price };
         });
         // Points go to est.staffId: the salesman who made the estimate, not the owner.
-        return get().saveBill('quotation', { staffId: est.staffId, customerId: est.customerId, tier: est.tier, lines, cash, online, fromEstimate: est.id });
+        const nb = get().saveBill('quotation', { referredBy: est.referredBy, needsCarpenter: est.needsCarpenter, staffId: est.staffId, customerId: est.customerId, tier: est.tier, lines, cash, online, fromEstimate: est.id });
+        if (est.job) set((st) => ({ bills: st.bills.map((b) => (b.id === nb.id ? { ...b, job: est.job } : b)) }));
+        return nb;
       },
+
+      /* ---------- carpenters (owner only) ---------- */
+      addCarpenter: (v) => { ownerOnly(get()); const name = v.name.trim(); if (name.length < 2) throw new Error('Enter the carpenter\'s name'); if (!/^\d{10}$/.test(v.phone)) throw new Error('Phone number must be 10 digits'); if (get().carpenters.some((c) => c.phone === v.phone)) throw new Error('A carpenter with this phone number already exists'); if (!(v.ratePct >= 0 && v.ratePct <= 20)) throw new Error('Commission must be between 0 and 20 percent');
+        set((s) => ({ carpenters: [...s.carpenters, { id: uid('K'), ...v, name, joined: new Date().toISOString(), active: true }] })); },
+      updateCarpenter: (id, v) => { ownerOnly(get()); if (v.name.trim().length < 2) throw new Error('Enter the carpenter\'s name'); if (!/^\d{10}$/.test(v.phone)) throw new Error('Phone number must be 10 digits'); if (!(v.ratePct >= 0 && v.ratePct <= 20)) throw new Error('Commission must be between 0 and 20 percent');
+        set((s) => ({ carpenters: s.carpenters.map((c) => (c.id === id ? { ...c, ...v, name: v.name.trim() } : c)) })); },
+      assignCarpenter: (billId, carpenterId, date, fee, note) => { ownerOnly(get()); if (!get().carpenters.some((c) => c.id === carpenterId)) throw new Error('Choose a carpenter'); if (!date) throw new Error('Choose the date of the job'); if (!(fee >= 0)) throw new Error('Fee cannot be negative');
+        set((s) => ({ bills: s.bills.map((b) => (b.id === billId ? { ...b, needsCarpenter: undefined, job: { carpenterId, status: 'booked' as const, date, fee: Math.round(fee), note: note.trim(), assignedAt: new Date().toISOString() } } : b)) })); },
+      setJobDone: (billId, done) => { ownerOnly(get()); set((s) => ({ bills: s.bills.map((b) => (b.id === billId && b.job ? { ...b, job: { ...b.job, status: done ? 'done' as const : 'booked' as const, doneAt: done ? new Date().toISOString() : undefined } } : b)) })); },
+      removeJob: (billId) => { ownerOnly(get()); set((s) => ({ bills: s.bills.map((b) => (b.id === billId ? { ...b, job: undefined } : b)) })); },
+      setReferrer: (billId, carpenterId) => { ownerOnly(get()); set((s) => ({ bills: s.bills.map((b) => (b.id === billId ? { ...b, referredBy: carpenterId || undefined } : b)) })); },
+      payCarpenter: (carpenterId, amount, mode, note) => { ownerOnly(get()); const row = carpRows(get()).find((r) => r.c.id === carpenterId); if (!row) throw new Error('Carpenter not found');
+        const a = Math.round(amount); if (!(a > 0)) throw new Error('Enter an amount'); if (a > row.balance) throw new Error(`Only ${money(row.balance)} is owed to ${row.c.name}`);
+        set((s) => ({ carpPayouts: [{ id: uid('CP'), no: `CPY-${pad(s.carpPayouts.length + 1)}`, carpenterId, date: new Date().toISOString(), amount: a, mode, note: note.trim() }, ...s.carpPayouts] })); },
 
       /* ---------- returns ---------- */
       processReturn: (r) => {
@@ -297,11 +326,11 @@ export const useStore = create<Store>()(
       resetDemo: () => set({ ...buildSeed(), session: null, insideShop: true, convert: null, drafts: [], activeDraft: null }),
     }),
     {
-      name: 'nt-demo-v6', storage: createJSONStorage(() => storage),
+      name: 'nt-demo-v7', storage: createJSONStorage(() => storage),
       // Saved data from an older version is merged over today's defaults, so newer fields (stockIns, counters.sin) always exist.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<Store>;
-        return { ...current, ...p, stockIns: p.stockIns ?? current.stockIns, drafts: p.drafts ?? [], payAdjusts: p.payAdjusts ?? current.payAdjusts, payslips: p.payslips ?? current.payslips, counters: { ...current.counters, ...(p.counters ?? {}) }, settings: { ...current.settings, ...(p.settings ?? {}) } } as Store;
+        return { ...current, ...p, stockIns: p.stockIns ?? current.stockIns, drafts: p.drafts ?? [], payAdjusts: p.payAdjusts ?? current.payAdjusts, payslips: p.payslips ?? current.payslips, carpenters: p.carpenters ?? current.carpenters, carpPayouts: p.carpPayouts ?? current.carpPayouts, counters: { ...current.counters, ...(p.counters ?? {}) }, settings: { ...current.settings, ...(p.settings ?? {}) } } as Store;
       },
     }
   )

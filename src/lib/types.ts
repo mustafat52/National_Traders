@@ -44,7 +44,16 @@ export interface Bill {
   status: 'open' | 'paid' | 'converted'; fromEstimate?: string; validUntil?: string;
   /** set when the owner converted an estimate: who did it and when. Points go to staffId, the salesman who made the estimate. */
   convertedBy?: string; convertedAt?: string;
+  /** Carpenter who brought this customer (set at the counter, earns commission on a paid bill). */
+  referredBy?: string;
+  /** The salesman flagged that this customer wants a carpenter from the shop; the owner assigns one. */
+  needsCarpenter?: boolean;
+  /** Carpenter the shop sent to this customer's site, set by the owner. The labour fee is paid to the carpenter. */
+  job?: CarpJob;
 }
+export interface CarpJob { carpenterId: string; status: 'booked' | 'done'; date: string; fee: number; note: string; assignedAt: string; doneAt?: string; }
+export interface Carpenter { id: string; name: string; phone: string; area: string; skill: string; ratePct: number; joined: string; active: boolean; }
+export interface CarpPayout { id: string; no: string; carpenterId: string; date: string; amount: number; mode: string; note: string; }
 export interface ReturnLine { pid: string; qty: number; amount: number; pp: number; loc: number; }
 export interface ReturnRec {
   id: string; no: string; kind: 'sales' | 'damage'; billId: string; date: string; staffId: string;
@@ -58,6 +67,6 @@ export interface Settings { pointsPer1000: number; repeatDays: number; estimateD
 export interface Counters { est: number; quo: number; ret: number; pur: number; sin: number; pay: number; }
 export interface Data {
   products: Product[]; vendors: Vendor[]; purchases: Purchase[];payments: VendorPayment[];
-  staff: Staff[]; attendance: Attendance[]; leaves: Leave[]; payAdjusts: PayAdjust[]; payslips: Payslip[]; customers: Customer[]; bills: Bill[]; returns: ReturnRec[];
+  staff: Staff[]; attendance: Attendance[]; leaves: Leave[]; payAdjusts: PayAdjust[]; payslips: Payslip[]; carpenters: Carpenter[]; carpPayouts: CarpPayout[]; customers: Customer[]; bills: Bill[]; returns: ReturnRec[];
   stockIns: StockIn[]; transfers: Transfer[]; adjustments: Adjustment[]; settings: Settings; counters: Counters;
 }

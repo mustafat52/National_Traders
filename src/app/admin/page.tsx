@@ -7,6 +7,7 @@ import { dk, fmtTime, isExpiredEstimate, isLow, mk, money, stockTotal } from '@/
 import { salesOn, staffPoints, vendorAging, vendorBalance } from '@/lib/selectors';
 import { LOCS, Staff } from '@/lib/types';
 import { CountUp, GrowBar } from '@/components/CountUp';
+import { ownerOf } from '@/lib/owners';
 
 /* paint-chip tints used for people, in a fixed order */
 const CHIPS = [
@@ -48,11 +49,13 @@ export default function Dashboard() {
   const payable = aging.reduce((a, x) => a + x.bal, 0);
   const pendingLeaves = d.leaves.filter((l) => l.status === 'pending').length;
   const expiring = d.bills.filter((b) => b.kind === 'estimate' && b.status === 'open' && !isExpiredEstimate(b) && b.validUntil && new Date(b.validUntil).getTime() - now.getTime() < 2 * 86400000).length;
+  const needCarp = d.bills.filter((b) => b.needsCarpenter && !b.job).length;
   const attention = [
     { n: low.length, text: 'items are at or below their minimum', sub: soldOut ? `${soldOut} are sold out completely` : 'none are sold out', href: '/admin/lowstock', act: 'Review stock', t: 'bg-butter-bg text-butter-fg' },
     { n: overdueVendors, text: overdueVendors === 1 ? 'vendor is owed for over 60 days' : 'vendors are owed for over 60 days', sub: overdue ? `${money(overdue)} outstanding` : '', href: '/admin/vendors', act: 'Open payables', t: 'bg-blush-bg text-blush-fg' },
     { n: pendingLeaves, text: pendingLeaves === 1 ? 'leave request is waiting' : 'leave requests are waiting', sub: 'Staff are waiting for a yes or no', href: '/admin/leaves', act: 'Decide', t: 'bg-sky-bg text-sky-fg' },
     { n: expiring, text: expiring === 1 ? 'estimate expires within 2 days' : 'estimates expire within 2 days', sub: 'A call now can turn them into sales', href: '/admin/estimates', act: 'Convert', t: 'bg-lilac-bg text-lilac-fg' },
+    { n: needCarp, text: needCarp === 1 ? 'customer is waiting for a carpenter' : 'customers are waiting for a carpenter', sub: 'Salesmen asked for one at the counter', href: '/admin/carpenters', act: 'Assign', t: 'bg-sage-bg text-sage-fg' },
   ].filter((a) => a.n > 0);
 
   /* ---------- 14 day comparison ---------- */
@@ -76,6 +79,7 @@ export default function Dashboard() {
   const salesmen = d.staff.filter((s) => s.role === 'salesman');
   const bucket = [aging.reduce((a, x) => a + x.a[0], 0), aging.reduce((a, x) => a + x.a[1], 0), overdue]; const bucketTotal = Math.max(1, bucket.reduce((a, b) => a + b, 0));
   const AGEC = ['#8FA05E', '#E08A3C', '#D9705F'];
+  const owner = ownerOf(d.session?.owner);
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening';
 
   return (
@@ -83,7 +87,11 @@ export default function Dashboard() {
       {/* header */}
       <div className="mb-8 flex flex-wrap items-end justify-between gap-5">
         <div>
-          <div className="text-[15px] text-steel">{greeting}</div>
+          <div className="fade-up mb-4 inline-flex items-center gap-3 rounded-full border border-gold/40 bg-black py-1.5 pl-1.5 pr-5 shadow-sm">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-gold-light to-gold-deep font-display text-lg font-semibold text-black">{owner.initial}</span>
+            <span className="leading-tight"><span className="block text-[10px] uppercase tracking-[0.18em] text-gold-light">Owner</span><span className="block font-display text-[17px] font-semibold text-white">{owner.full}</span></span>
+          </div>
+          <div className="text-[15px] text-steel">{greeting}, {owner.first} Bhai</div>
           <h1 className="font-display text-[44px] font-semibold leading-[1.05] tracking-tight">{now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</h1>
         </div>
         <div className="w-full sm:w-auto sm:max-w-xl">

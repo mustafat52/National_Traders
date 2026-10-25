@@ -1,4 +1,5 @@
-import { Attendance, Bill, Customer, Data, Leave, PayAdjust, Product, Purchase, Staff, Vendor, VendorPayment } from './types';
+import { carpRows } from './carpenters';
+import { Attendance, Bill, CarpPayout, Carpenter, Customer, Data, Leave, PayAdjust, Product, Purchase, Staff, Vendor, VendorPayment } from './types';
 import { calcPoints, dk, mk, pad } from './rules';
 import { computePay, figuresOf, leaveDays, shiftMonth } from './payroll';
 
@@ -155,8 +156,24 @@ export function buildSeed(): Data {
   // Cost of some products has risen since their selling prices were set: sales of these look thin or below cost at the latest purchase price.
   products.forEach((p, i) => { if (i % 37 === 0) p.pp = Math.round(p.pp * 1.3); });
 
+  // Carpenters: some bills were brought by one, a few have a carpenter sent by the shop, a few customers have asked for one.
+  const carpenters: Carpenter[] = [
+    ['Abdul Rahim', '9849011101', 'Tolichowki', 'Modular kitchens', 3], ['Shabbir Ali', '9849011102', 'Charminar', 'Doors and frames', 2.5], ['Mohd Yaseen', '9849011103', 'Mehdipatnam', 'Furniture', 3],
+    ['Ganesh Chary', '9849011104', 'Kukatpally', 'Wardrobes', 2], ['Ramesh Vishwakarma', '9849011105', 'Secunderabad', 'Panelling and false ceiling', 3], ['Anwar Pasha', '9849011106', 'Malakpet', 'Flooring and shuttering', 2],
+  ].map(([name, phone, area, skill, ratePct], i) => ({ id: `K${i + 1}`, name: name as string, phone: phone as string, area: area as string, skill: skill as string, ratePct: ratePct as number, joined: daysAgo(200 - i * 20, 10), active: true }));
+  const kw = [4, 3, 3, 2, 2, 1];
+  const kpick = () => { let x = r() * kw.reduce((a, b) => a + b, 0); for (let i = 0; i < kw.length; i++) { x -= kw[i]; if (x < 0) return carpenters[i].id; } return carpenters[0].id; };
+  bills.forEach((b) => { if (b.id !== 'B1' && r() < 0.32) b.referredBy = kpick(); });
+  const recent = bills.filter((b) => b.kind === 'quotation' && Date.now() - new Date(b.date).getTime() < 16 * 86400000).slice(0, 11);
+  recent.forEach((b, i) => {
+    if (i < 8) { const done = i % 2 === 0; const when = new Date(new Date(b.date).getTime() + (done ? 3600000 * 5 : 86400000)).toISOString();
+      b.job = { carpenterId: carpenters[i % 5].id, status: done ? 'done' : 'booked', date: dk(when), fee: 500 + Math.floor(r() * 20) * 100, note: ['Fit the new doors', 'Wardrobe shutters', 'Kitchen cabinet fitting', 'Panelling for the hall'][i % 4], assignedAt: b.date, doneAt: done ? when : undefined }; }
+    else b.needsCarpenter = true;
+  });
+  bills.filter((b) => b.kind === 'estimate' && b.status === 'open').slice(0, 3).forEach((b) => { b.needsCarpenter = true; });
+
   const data: Data = {
-    products, vendors, purchases, payments, staff, attendance, leaves, payAdjusts, payslips,
+    products, vendors, purchases, payments, staff, attendance, leaves, payAdjusts, payslips, carpenters, carpPayouts: [],
     customers, bills, returns: [], stockIns: [], transfers: [], adjustments: [],
     settings: { pointsPer1000: 10, repeatDays: 15, estimateDays: 7, linkDays: 60, lateAfter: '10:00', weeklyOff: 0 },
     counters: { est: e + 1, quo: q + 1, ret: 1, pur: po + 1, sin: 1, pay: 1 },
@@ -166,5 +183,9 @@ export function buildSeed(): Data {
     payslips.push({ ...figuresOf(c), id: `PS${i + 1}`, no: `SLP-${pad(i + 1)}`, staffId: st.id, month: prev, paidOn: new Date(Date.now() - 18 * 86400000).toISOString(), mode: i === 1 ? 'Online' : 'Cash' });
   });
   data.counters.pay = payslips.length + 1;
+  // Pay each carpenter about half of what they have earned, so the owner sees a balance still owed.
+  const payouts: CarpPayout[] = [];
+  carpRows(data).forEach((row, i) => { const amt = Math.round((row.balance * (i === 5 ? 1 : 0.55)) / 100) * 100; if (amt > 0) payouts.push({ id: `CP${i + 1}`, no: `CPY-${pad(i + 1)}`, carpenterId: row.c.id, date: new Date(Date.now() - (9 + i) * 86400000).toISOString(), amount: amt, mode: i % 2 ? 'Online' : 'Cash', note: i === 5 ? 'Settled in full' : 'Part payment' }); });
+  data.carpPayouts = payouts;
   return data;
 }
