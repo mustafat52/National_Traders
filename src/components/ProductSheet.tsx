@@ -5,7 +5,7 @@ import { fmtPrice } from '@/lib/pricing';
 import { stockTotal } from '@/lib/rules';
 
 /** What a salesman sees after scanning a product's QR: the product, its prices and where the stock is. */
-export function ProductSheet({ p, onClose, onAdd, onNext, added }: { p: Product; onClose: () => void; onAdd?: () => void; onNext: () => void; added?: boolean }) {
+export function ProductSheet({ p, onClose, onAdd, onNext, added, tier }: { p: Product; tier?: number | null; onClose: () => void; onAdd?: () => void; onNext: () => void; added?: boolean }) {
   const total = stockTotal(p); const hasMrp = (p.mrp ?? 0) > 0;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-4" onClick={onClose}>
@@ -25,14 +25,12 @@ export function ProductSheet({ p, onClose, onAdd, onNext, added }: { p: Product;
           <div className="font-display text-3xl font-semibold tabular-nums">{hasMrp ? '₹' + fmtPrice(p.mrp!) : 'Not set'}</div>
         </div>
 
-        {hasMrp && (
-          <div className="mt-3 rounded-2xl border border-line">
-            <div className="border-b border-line px-4 py-2 text-xs font-semibold uppercase tracking-wide text-steel">Price for customer</div>
-            {TIER_NAMES.map((n, i) => (
-              <div key={n} className="flex items-center justify-between border-b border-line/60 px-4 py-2 last:border-0">
-                <span className="text-sm">{n}</span><span className="text-[17px] font-semibold tabular-nums">₹{fmtPrice(p.prices[i])}</span>
-              </div>))}
-          </div>)}
+        {hasMrp && (tier === null || tier === undefined
+          ? <p className="mt-3 rounded-2xl bg-butter px-4 py-3 text-sm">Choose the customer category on the bill to see the price for this customer.</p>
+          : <div className="mt-3 flex items-center justify-between rounded-2xl border-2 border-gold bg-sage-bg/60 px-4 py-3">
+              <div><div className="text-xs text-steel">Price for this customer</div><div className="text-sm font-medium">{TIER_NAMES[tier]}</div></div>
+              <div className="font-display text-3xl font-semibold tabular-nums">₹{fmtPrice(p.prices[tier])}</div>
+            </div>)}
 
         <div className="mt-3 rounded-2xl border border-line">
           <div className="flex items-center justify-between border-b border-line px-4 py-2"><span className="text-xs font-semibold uppercase tracking-wide text-steel">Stock</span>

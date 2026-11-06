@@ -27,7 +27,7 @@ export default function Counter() {
       <button onClick={() => { setBad(''); setScanning(true); }} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-black py-3.5 text-[15px] font-semibold text-white"><ScanLine className="h-5 w-5" />Scan a product QR</button>
       {bad && <p className="rounded-xl bg-blush-bg px-3 py-2 text-sm text-blush-fg">{bad}</p>}
       {scanning && <Scanner onClose={() => setScanning(false)} onScan={(txt) => { const q = txt.trim().toUpperCase(); const p = d.products.find((x) => x.sku.toUpperCase() === q || x.id.toUpperCase() === q); setScanning(false); if (p) { setSeen(p); setAdded(false); } else setBad('Unknown QR code: ' + txt); }} />}
-      {seen && <ProductSheet p={seen} added={added} onClose={() => setSeen(null)} onNext={() => { setSeen(null); setBad(''); setScanning(true); }}
+      {seen && <ProductSheet p={seen} added={added} tier={active ? (active.tier ?? (/^\d{10}$/.test(active.phone) ? d.customers.find((c) => c.phone === active.phone)?.tier : null) ?? null) : null} onClose={() => setSeen(null)} onNext={() => { setSeen(null); setBad(''); setScanning(true); }}
         onAdd={active && !active.result ? () => { const ls = active.lines; const q = (ls.find((l) => l.pid === seen.id)?.qty ?? 0) + 1; d.patchDraft(active.id, { lines: ls.some((l) => l.pid === seen.id) ? ls.map((l) => (l.pid === seen.id ? { ...l, qty: q, alloc: autoAlloc(seen, q) } : l)) : [...ls, { pid: seen.id, qty: 1, alloc: autoAlloc(seen, 1) }] }); setAdded(true); } : undefined} />}
       <div className="no-scrollbar -mx-3 flex gap-2 overflow-x-auto px-3 pb-1" role="tablist" aria-label="Open bills">
         {mine.map((x, i) => {
@@ -110,7 +110,7 @@ function Bill({ draft, pm }: { draft: Draft; pm: Map<string, Product> }) {
           <div className="font-display text-lg font-semibold">Who is the customer?</div>
           <input inputMode="numeric" maxLength={10} autoFocus className="w-full !rounded-2xl !py-3 text-xl tracking-wider" placeholder="10 digit phone number" value={draft.phone} onChange={(e) => patch({ phone: e.target.value.replace(/\D/g, '') })} />
           {valid && (cust ? <div className="rounded-xl bg-sky-bg px-3 py-2 text-sm text-sky-fg">Returning customer{cust.name ? `: ${cust.name}` : ''}. Their saved category is selected.</div> : <div className="rounded-xl bg-paper px-3 py-2 text-sm text-steel">New customer. Choose a price category.</div>)}
-          <div className="grid grid-cols-4 gap-2">{TIER_NAMES.map((n, i) => <button key={n} onClick={() => patch({ tier: i })} className={`rounded-2xl border py-3 text-lg font-semibold ${t === i ? 'border-black bg-black text-gold-light' : 'border-line bg-white'}`}>{n.slice(-1)}</button>)}</div>
+          <div className="grid grid-cols-2 gap-2">{TIER_NAMES.map((n, i) => <button key={n} onClick={() => patch({ tier: i })} className={`rounded-2xl border px-2 py-4 text-[15px] font-semibold ${t === i ? 'border-black bg-black text-gold-light' : 'border-line bg-white'}`}>{n}</button>)}</div>
           <p className="text-xs text-steel">The category decides the price list. The customer does not see this screen.</p>
           {ready && <button onClick={() => setEdit(false)} className="w-full rounded-2xl bg-black py-3 font-semibold text-gold-light">Done</button>}
         </div>
