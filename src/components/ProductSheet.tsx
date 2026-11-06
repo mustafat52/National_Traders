@@ -1,6 +1,6 @@
 'use client';
 import { Check, ScanLine, X } from 'lucide-react';
-import { LOCS, Product, TIER_NAMES } from '@/lib/types';
+import { LOCS, Product } from '@/lib/types';
 import { fmtPrice } from '@/lib/pricing';
 import { stockTotal } from '@/lib/rules';
 
@@ -26,9 +26,9 @@ export function ProductSheet({ p, onClose, onAdd, onNext, added, tier }: { p: Pr
         </div>
 
         {hasMrp && (tier === null || tier === undefined
-          ? <p className="mt-3 rounded-2xl bg-butter px-4 py-3 text-sm">Choose the customer category on the bill to see the price for this customer.</p>
+          ? <p className="mt-3 rounded-2xl bg-butter px-4 py-3 text-sm">Select the rate on the bill first to see the price.</p>
           : <div className="mt-3 flex items-center justify-between rounded-2xl border-2 border-gold bg-sage-bg/60 px-4 py-3">
-              <div><div className="text-xs text-steel">Price for this customer</div><div className="text-sm font-medium">{TIER_NAMES[tier]}</div></div>
+              <div className="text-sm font-medium">Price</div>
               <div className="font-display text-3xl font-semibold tabular-nums">₹{fmtPrice(p.prices[tier])}</div>
             </div>)}
 

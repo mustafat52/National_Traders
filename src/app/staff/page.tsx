@@ -102,16 +102,15 @@ function Bill({ draft, pm }: { draft: Draft; pm: Map<string, Product> }) {
       {/* 1. customer */}
       {ready && !edit ? (
         <div className={`${card} flex items-center justify-between !py-3`}>
-          <div><div className="font-display text-lg font-semibold leading-5">{draft.phone}</div><div className="text-xs text-steel">{cust ? `Returning customer${cust.name ? ': ' + cust.name : ''}` : 'New customer'} · {TIER_NAMES[t!]}</div></div>
+          <div><div className="font-display text-lg font-semibold leading-5">{draft.phone}</div><div className="text-xs text-steel">{cust ? `Returning customer${cust.name ? ': ' + cust.name : ''}` : 'New customer'}</div></div>
           <button onClick={() => setEdit(true)} className="rounded-xl bg-paper px-3 py-1.5 text-sm font-medium">Change</button>
         </div>
       ) : (
         <div className={`${card} space-y-3`}>
           <div className="font-display text-lg font-semibold">Who is the customer?</div>
           <input inputMode="numeric" maxLength={10} autoFocus className="w-full !rounded-2xl !py-3 text-xl tracking-wider" placeholder="10 digit phone number" value={draft.phone} onChange={(e) => patch({ phone: e.target.value.replace(/\D/g, '') })} />
-          {valid && (cust ? <div className="rounded-xl bg-sky-bg px-3 py-2 text-sm text-sky-fg">Returning customer{cust.name ? `: ${cust.name}` : ''}. Their saved category is selected.</div> : <div className="rounded-xl bg-paper px-3 py-2 text-sm text-steel">New customer. Choose a price category.</div>)}
-          <div className="grid grid-cols-2 gap-2">{TIER_NAMES.map((n, i) => <button key={n} onClick={() => patch({ tier: i })} className={`rounded-2xl border px-2 py-4 text-[15px] font-semibold ${t === i ? 'border-black bg-black text-gold-light' : 'border-line bg-white'}`}>{n}</button>)}</div>
-          <p className="text-xs text-steel">The category decides the price list. The customer does not see this screen.</p>
+          {valid && (cust ? <div className="rounded-xl bg-sky-bg px-3 py-2 text-sm text-sky-fg">Returning customer{cust.name ? `: ${cust.name}` : ''}</div> : <div className="rounded-xl bg-paper px-3 py-2 text-sm text-steel">New customer</div>)}
+          <div className="flex items-center justify-end gap-1.5" aria-label="Rate">{TIER_NAMES.map((n, i) => <button key={n} onClick={() => patch({ tier: i })} aria-label={`Rate ${'ABCD'[i]}`} className={`h-7 w-7 rounded-md border text-[11px] font-medium ${t === i ? 'border-steel/60 bg-steel/15 text-steel' : 'border-line/70 bg-transparent text-steel/50'}`}>{'ABCD'[i]}</button>)}</div>
           {ready && <button onClick={() => setEdit(false)} className="w-full rounded-2xl bg-black py-3 font-semibold text-gold-light">Done</button>}
         </div>
       )}
