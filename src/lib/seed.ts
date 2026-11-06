@@ -1,3 +1,4 @@
+import { DEFAULT_DISC, pricesFrom } from './pricing';
 import { carpRows } from './carpenters';
 import { DEFAULT_LOCS, Attendance, Bill, CarpPayout, Carpenter, Customer, Data, Leave, PayAdjust, Product, Purchase, Staff, Vendor, VendorPayment } from './types';
 import { calcPoints, dk, mk, pad } from './rules';
@@ -56,7 +57,7 @@ export function buildSeed(): Data {
         id: `NT-${pad(ci, 2)}-${pad(k, 3)}`, sku: `NT-${pad(ci, 2)}-${pad(k, 3)}`,
         name: `${BRANDS[k % 6]} ${c[1]} ${SERIES[Math.floor(k / 6) % 4]} ${SIZES[size]}`,
         brand: BRANDS[k % 6], model: `${c[1]} ${SIZES[size]}`, variant: SERIES[Math.floor(k / 6) % 4],
-        cat: c[0], unit: c[2], pp, prices: [1.38, 1.28, 1.2, 1.12].map((m) => Math.round(pp * m)),
+        cat: c[0], unit: c[2], pp, mrp: Math.round(pp / 0.25), disc: [...DEFAULT_DISC], prices: pricesFrom(Math.round(pp / 0.25), DEFAULT_DISC),
         stock, min: pp > 1500 ? 3 : r() < 0.5 ? 10 : 20, shopOnly: x < 0.3,
       });
       // Things sold loose but bought in boxes: stock is counted in pieces, and the box size differs from product to product.

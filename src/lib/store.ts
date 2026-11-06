@@ -1,6 +1,7 @@
+import { roundBill } from './pricing';
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
-import { buildSeed } from './seed';
+import { buildReal } from './realdata';
 import { LOCS, Pack, syncLocs, AdjustKind, Bill, BillLine, Data, Purchase, ReturnRec, Settings, Staff, Vendor } from './types';
 import { calcPoints, dk, money, pad, uid } from './rules';
 import { carpRows } from './carpenters';
@@ -82,7 +83,7 @@ const code = () => Math.random().toString(36).slice(2, 10) + Math.random().toStr
 export const useStore = create<Store>()(
   persist(
     (set, get) => ({
-      ...buildSeed(), session: null, insideShop: true, convert: null, drafts: [], activeDraft: null,
+      ...buildReal(), session: null, insideShop: true, convert: null, drafts: [], activeDraft: null,
 
       /* ---------- session & attendance ---------- */
       login: (staffId, owner) => set((s) => {
@@ -224,7 +225,7 @@ export const useStore = create<Store>()(
       },
       saveBill: (kind, d) => {
         const s = get(); const now = new Date();
-        const total = d.lines.reduce((a, l) => a + l.qty * l.price, 0);
+        const total = roundBill(d.lines.reduce((a, l) => a + l.qty * l.price, 0));
         if (!d.lines.length) throw new Error('Add at least one item');
         if (d.fromEstimate && s.session?.role !== 'admin') throw new Error('Only the owner can convert an estimate to a sale');
         if (kind === 'quotation') {
@@ -335,10 +336,10 @@ export const useStore = create<Store>()(
         if (n.length < 2) throw new Error('Give the place a name');
         if (LOCS.some((x, j) => j !== i && x.toLowerCase() === n.toLowerCase())) throw new Error('There is already a place with this name');
         set((s) => ({ settings: { ...s.settings, locations: LOCS.map((x, j) => (j === i ? n : x)) } })); },
-      resetDemo: () => { syncLocs(); set({ ...buildSeed(), session: null, insideShop: true, convert: null, drafts: [], activeDraft: null }); },
+      resetDemo: () => { syncLocs(); set({ ...buildReal(), session: null, insideShop: true, convert: null, drafts: [], activeDraft: null }); },
     }),
     {
-      name: 'nt-demo-v8', storage: createJSONStorage(() => storage),
+      name: 'nt-demo-v10', storage: createJSONStorage(() => storage),
       // Saved data from an older version is merged over today's defaults, so newer fields (stockIns, counters.sin) always exist.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<Store>; syncLocs(p.settings?.locations ?? current.settings.locations);

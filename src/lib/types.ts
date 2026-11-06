@@ -7,12 +7,18 @@ export const LOC_COLORS = ['#B8892B', '#8FA05E', '#EAD9A3', '#8FB4D6', '#D9705F'
 export const LOC_TINTS = ['bg-sage-bg text-sage-fg', 'bg-sky-bg text-sky-fg', 'bg-lilac-bg text-lilac-fg', 'bg-butter-bg text-butter-fg', 'bg-blush-bg text-blush-fg', 'bg-paper text-ink'];
 /** A bigger pack the product comes in, e.g. Dozen = 12 pieces, Box = 400 pieces. Stock and prices are always per base unit. */
 export interface Pack { name: string; per: number; }
-export const TIER_NAMES = ['Category A', 'Category B', 'Category C', 'Category D'];
+/** Customer categories. Index 3 is the Default price list, used when the customer has no category. (Interiors customers are Carpenter.) */
+export const TIER_NAMES = ['Retail (A)', 'Carpenter (B)', 'Wholesale (C)', 'Default'];
 
 export interface Product {
   id: string; sku: string; name: string; cat: string; unit: string;
   pp: number;            // purchase price (ADMIN ONLY, never shown to salesmen)
-  prices: number[];      // selling price per customer category (4)
+  prices: number[];      // selling price per customer category (4), always worked out from mrp and disc when those are set
+  mrp?: number;          // printed maximum retail price (per base unit)
+  disc?: number[];       // discount % off MRP for each customer category (same order as prices)
+  sub?: string;          // sub-category
+  size?: string;         // size or thickness, e.g. 18mm, 4 inch
+  color?: string;        // colour or finish, e.g. Black, Antik (Parent Group)
   stock: number[];       // stock per location (3)
   min: number;           // low-stock threshold (total quantity)
   packs?: Pack[];        // other ways it is bought and sold: each pack holds `per` base units

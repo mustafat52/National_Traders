@@ -1,4 +1,5 @@
 'use client';
+import { roundBill } from '@/lib/pricing';
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Hammer, MessageCircle, Plus, Search, Trash2, X } from 'lucide-react';
 import { useStore, useProductMap, Draft } from '@/lib/store';
@@ -18,7 +19,7 @@ export default function Counter() {
     const s = useStore.getState(); const list = s.drafts.filter((x) => x.staffId === me);
     if (!list.length) s.newDraft(); else if (!list.some((x) => x.id === s.activeDraft)) s.setActiveDraft(list[0].id);
   }, [mine.length, d.activeDraft, me]);
-  const totalOf = (x: Draft) => x.lines.reduce((t, l) => t + l.qty * (pm.get(l.pid)?.prices[x.tier ?? d.customers.find((c) => c.phone === x.phone)?.tier ?? 0] ?? 0), 0);
+  const totalOf = (x: Draft) => roundBill(x.lines.reduce((t, l) => t + l.qty * (pm.get(l.pid)?.prices[x.tier ?? d.customers.find((c) => c.phone === x.phone)?.tier ?? 0] ?? 0), 0));
   return (
     <div className="space-y-3">
       <div className="no-scrollbar -mx-3 flex gap-2 overflow-x-auto px-3 pb-1" role="tablist" aria-label="Open bills">

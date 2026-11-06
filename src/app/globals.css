@@ -38,3 +38,7 @@ input, select, textarea { @apply rounded-lg border border-slate-300 bg-white px-
 @keyframes caret { 50% { opacity: 0; } }
 .welcome-caret { animation: caret .9s step-end infinite; height: 1em; }
 @media (prefers-reduced-motion: reduce) { .welcome-screen, .welcome-ring, .welcome-line, .welcome-caret { animation: none; } }
+
+/* print sheets (labels): hidden on screen, shown when printing */
+.print-only { display: none; }
+@media print { .print-only { display: block; } main { padding: 0 !important; } }
