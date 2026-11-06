@@ -1,19 +1,21 @@
 'use client';
 import { roundBill } from '@/lib/pricing';
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Hammer, MessageCircle, Plus, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Hammer, MessageCircle, Plus, ScanLine, Search, Trash2, X } from 'lucide-react';
 import { useStore, useProductMap, Draft } from '@/lib/store';
 import { LOCS, Product, TIER_NAMES } from '@/lib/types';
 import { autoAlloc, fmtDate, money, needsPicker, packBreakdown, qtyText, repeatHit, stockTotal } from '@/lib/rules';
 import { Scanner } from '@/components/ui';
 import { ProductSearch, EmojiTile, productPath } from '@/components/ProductSearch';
 import { Stepper } from '@/components/Stepper';
+import { ProductSheet } from '@/components/ProductSheet';
 
 const card = 'rounded-[22px] border border-line bg-white p-4';
 
 /** The staff home screen: the billing counter. Several bills can be open at once; tabs switch between them. */
 export default function Counter() {
   const d = useStore(); const pm = useProductMap(); const me = d.session!.staffId;
+  const [scanning, setScanning] = useState(false); const [seen, setSeen] = useState<Product | null>(null); const [added, setAdded] = useState(false); const [bad, setBad] = useState('');
   const mine = d.drafts.filter((x) => x.staffId === me); const active = mine.find((x) => x.id === d.activeDraft);
   useEffect(() => {
     const s = useStore.getState(); const list = s.drafts.filter((x) => x.staffId === me);
@@ -22,6 +24,11 @@ export default function Counter() {
   const totalOf = (x: Draft) => roundBill(x.lines.reduce((t, l) => t + l.qty * (pm.get(l.pid)?.prices[x.tier ?? d.customers.find((c) => c.phone === x.phone)?.tier ?? 0] ?? 0), 0));
   return (
     <div className="space-y-3">
+      <button onClick={() => { setBad(''); setScanning(true); }} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-black py-3.5 text-[15px] font-semibold text-white"><ScanLine className="h-5 w-5" />Scan a product QR</button>
+      {bad && <p className="rounded-xl bg-blush-bg px-3 py-2 text-sm text-blush-fg">{bad}</p>}
+      {scanning && <Scanner onClose={() => setScanning(false)} onScan={(txt) => { const q = txt.trim().toUpperCase(); const p = d.products.find((x) => x.sku.toUpperCase() === q || x.id.toUpperCase() === q); setScanning(false); if (p) { setSeen(p); setAdded(false); } else setBad('Unknown QR code: ' + txt); }} />}
+      {seen && <ProductSheet p={seen} added={added} onClose={() => setSeen(null)} onNext={() => { setSeen(null); setBad(''); setScanning(true); }}
+        onAdd={active && !active.result ? () => { const ls = active.lines; const q = (ls.find((l) => l.pid === seen.id)?.qty ?? 0) + 1; d.patchDraft(active.id, { lines: ls.some((l) => l.pid === seen.id) ? ls.map((l) => (l.pid === seen.id ? { ...l, qty: q, alloc: autoAlloc(seen, q) } : l)) : [...ls, { pid: seen.id, qty: 1, alloc: autoAlloc(seen, 1) }] }); setAdded(true); } : undefined} />}
       <div className="no-scrollbar -mx-3 flex gap-2 overflow-x-auto px-3 pb-1" role="tablist" aria-label="Open bills">
         {mine.map((x, i) => {
           const on = x.id === active?.id; const label = /^\d{10}$/.test(x.phone) ? `…${x.phone.slice(-4)}` : `Bill ${i + 1}`;

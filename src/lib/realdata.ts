@@ -48,13 +48,16 @@ const BATCHES: Batch[] = [
   { cat: 'HARDWARE', sub: 'HOOKS', disc: [30, 50, 70, 45], rows: HOOKS },
 ];
 
+/** DEMO ONLY: gives priced items some stock so the scan screen has something to show. Replace with real stock-in. */
+const demoStock = (mrp: number, n: number) => DEFAULT_LOCS.map((_, i) => (mrp > 0 ? [(n * 7) % 18 + 4, (n * 5) % 25, (n * 3) % 12][i] ?? 0 : 0));
+
 function catalogue(): Product[] {
   const next = new Map<string, number>();
   return BATCHES.flatMap((b) => b.rows.map(([base, color, mrp, cost]) => {
     const pre = PREFIX[b.cat]; const n = (next.get(pre) ?? 0) + 1; next.set(pre, n); const sku = `${pre}-${String(n).padStart(5, '0')}`;
     return {
       id: 'NT-' + sku, sku, name: color ? `${base} (${color})` : base, cat: b.cat, sub: b.sub, unit: 'pcs', pp: cost, mrp: mrp > 0 ? mrp : undefined, disc: [...b.disc],
-      prices: mrp > 0 ? pricesFrom(mrp, b.disc) : [0, 0, 0, 0], stock: DEFAULT_LOCS.map(() => 0), min: 0, model: base, variant: color, color: color || undefined, shopOnly: true,
+      prices: mrp > 0 ? pricesFrom(mrp, b.disc) : [0, 0, 0, 0], stock: demoStock(mrp, n), min: 0, model: base, variant: color, color: color || undefined, shopOnly: true,
     } as Product;
   }));
 }

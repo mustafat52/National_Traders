@@ -339,7 +339,7 @@ export const useStore = create<Store>()(
       resetDemo: () => { syncLocs(); set({ ...buildReal(), session: null, insideShop: true, convert: null, drafts: [], activeDraft: null }); },
     }),
     {
-      name: 'nt-demo-v10', storage: createJSONStorage(() => storage),
+      name: 'nt-demo-v12', storage: createJSONStorage(() => storage),
       // Saved data from an older version is merged over today's defaults, so newer fields (stockIns, counters.sin) always exist.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<Store>; syncLocs(p.settings?.locations ?? current.settings.locations);

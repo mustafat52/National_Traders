@@ -87,7 +87,7 @@ export function ProductPicker({ onPick, placeholder = 'Search product name or SK
 }
 
 export function Scanner({ onScan, onClose }: { onScan: (text: string) => void; onClose: () => void }) {
-  const [err, setErr] = useState('');
+  const [err, setErr] = useState(''); const [code, setCode] = useState('');
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let sc: any; let done = false;
@@ -107,6 +107,10 @@ export function Scanner({ onScan, onClose }: { onScan: (text: string) => void; o
         <div className="mb-2 flex items-center justify-between"><b>Scan product QR</b><button onClick={onClose}><X className="h-5 w-5" /></button></div>
         <div id="qr-reader" className="overflow-hidden rounded-lg" />
         {err && <p className="mt-2 text-sm text-amber-700">{err}</p>}
+        <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (code.trim()) onScan(code.trim().toUpperCase()); }}>
+          <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Or type the code, e.g. HW-00034" className="min-w-0 flex-1 rounded-lg border border-line px-3 py-2 text-sm" autoCapitalize="characters" />
+          <button className="rounded-lg bg-black px-4 text-sm font-medium text-white">Go</button>
+        </form>
       </div>
     </div>
   );
