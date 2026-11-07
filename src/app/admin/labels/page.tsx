@@ -137,7 +137,7 @@ export default function Labels() {
             <header className="border-b border-line px-4 py-2 text-[12px] font-semibold uppercase tracking-wide text-steel">Label preview</header>
             <div className="p-4">
               {shown ? (<>
-                <div className="flex justify-center rounded-md bg-paper p-4"><LabelCard code={shown.sku} name={shown.name} mrp={shown.mrp} content={shownContent} size={size} scale={Math.min(1.2, 250 / (Math.max(size.w, 1) * 3.78))} border /></div>
+                <div className="flex justify-center rounded-md bg-paper p-4"><LabelCard code={shown.sku} name={shown.name} desc={shown.desc} mrp={shown.mrp} content={shownContent} size={size} scale={Math.min(1.2, 250 / (Math.max(size.w, 1) * 3.78))} border /></div>
                 <div className="mt-3 text-[13px] font-medium">{shown.name}</div>
                 <div className="text-[12px] text-steel">{size.w} × {size.h} mm</div>
                 {!printable(shown, shownContent) && <p className="mt-2 rounded bg-butter-bg px-3 py-1.5 text-[12.5px] text-butter-fg">No MRP yet. Set the MRP on the product, or switch MRP off for this label.</p>}
@@ -169,7 +169,7 @@ export default function Labels() {
         </div>
       </div>
       <div className="print-only"><div className={mode === 'roll' ? '' : 'flex flex-wrap'} style={mode === 'sheet' ? { gap: '2mm' } : undefined}>
-        {picked.map(({ q, c, k }, i) => <div key={k} style={mode === 'roll' ? { breakAfter: i === picked.length - 1 ? 'auto' : 'page' } : { breakInside: 'avoid' }}><LabelCard code={q.sku} name={q.name} mrp={q.mrp} content={c} size={size} border={mode === 'sheet'} /></div>)}
+        {picked.map(({ q, c, k }, i) => <div key={k} style={mode === 'roll' ? { breakAfter: i === picked.length - 1 ? 'auto' : 'page' } : { breakInside: 'avoid' }}><LabelCard code={q.sku} name={q.name} desc={q.desc} mrp={q.mrp} content={c} size={size} border={mode === 'sheet'} /></div>)}
       </div></div>
     </>
   );

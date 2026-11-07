@@ -146,7 +146,7 @@ export default function ProductPage() {
           </Panel>
 
           <Panel title="Label" hint={`${lsize.w} × ${lsize.h} mm`}>
-            <div className="flex justify-center rounded-md bg-paper p-3"><LabelCard code={code} name={[base.trim(), size.trim(), color.trim() ? `(${color.trim()})` : ''].filter(Boolean).join(' ')} mrp={hasMrp ? mrpN : undefined} content={lc} size={lsize} scale={Math.min(1.5, 330 / (Math.max(lsize.w, 1) * 3.78))} border /></div>
+            <div className="flex justify-center rounded-md bg-paper p-3"><LabelCard code={code} desc={p.desc} name={[base.trim(), size.trim(), color.trim() ? `(${color.trim()})` : ''].filter(Boolean).join(' ')} mrp={hasMrp ? mrpN : undefined} content={lc} size={lsize} scale={Math.min(1.5, 330 / (Math.max(lsize.w, 1) * 3.78))} border /></div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="What to print on this item's label"><span className="mr-1 text-[12px] text-steel">Print on label</span>
               {CONTENT_FIELDS.map(({ k, label }) => <button key={k} type="button" aria-pressed={lc[k]} onClick={() => setLc(toggleContent(lc, k))} className={`rounded border px-2 py-0.5 text-[12px] font-medium ${lc[k] ? 'border-ink bg-ink text-white' : 'border-line bg-white text-steel hover:bg-paper'}`}>{label}</button>)}</div>
             <div className="mt-2 text-[12px] text-steel">Remembered for this item. {isNew ? 'Save the item to print it.' : <Link className="underline" href={`/admin/labels?p=${p.id}`}>Print this label</Link>}</div>

@@ -10,11 +10,11 @@ export const DEFAULT_SIZES: LabelSize[] = [
 /** What a sticker shows unless the product says otherwise. */
 export const DEFAULT_CONTENT: LabelContent = { qr: true, code: true, name: false, mrp: true };
 export const contentOf = (p: Pick<Product, 'label'>): LabelContent => p.label ?? DEFAULT_CONTENT;
-export const sameContent = (a: LabelContent, b: LabelContent) => a.qr === b.qr && a.code === b.code && a.name === b.name && a.mrp === b.mrp;
-export const CONTENT_FIELDS: { k: keyof LabelContent; label: string }[] = [{ k: 'qr', label: 'QR' }, { k: 'code', label: 'Code' }, { k: 'name', label: 'Name' }, { k: 'mrp', label: 'MRP' }];
+export const sameContent = (a: LabelContent, b: LabelContent) => a.qr === b.qr && a.code === b.code && a.name === b.name && a.mrp === b.mrp && !!a.desc === !!b.desc;
+export const CONTENT_FIELDS: { k: keyof LabelContent; label: string }[] = [{ k: 'qr', label: 'QR' }, { k: 'code', label: 'Code' }, { k: 'name', label: 'Name' }, { k: 'mrp', label: 'MRP' }, { k: 'desc', label: 'Description' }];
 /** Turns one field on or off. The last field cannot be switched off, and a QR always goes with the code under it. */
 export function toggleContent(c: LabelContent, k: keyof LabelContent): LabelContent {
-  const n = { ...c, [k]: !c[k] }; if (!n.qr && !n.code && !n.name && !n.mrp) return c; return n;
+  const n = { ...c, [k]: !c[k] }; if (!n.qr && !n.code && !n.name && !n.mrp && !n.desc) return c; return n;
 }
 /** The MRP line printed on the label. */
 export const mrpLine = (mrp?: number) => (mrp && mrp > 0 ? `MRP ₹${fmtPrice(mrp)}` : 'MRP not set');
