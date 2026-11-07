@@ -10,6 +10,11 @@ export interface Pack { name: string; per: number; }
 /** Customer categories. Index 3 is the Default price list, used when the customer has no category. (Interiors customers are Carpenter.) */
 export const TIER_NAMES = ['Retail (A)', 'Carpenter (B)', 'Wholesale (C)', 'Default'];
 
+/** What is printed on a product's sticker. The QR holds the item code. */
+export interface LabelContent { qr: boolean; code: boolean; name: boolean; mrp: boolean; desc?: boolean }
+/** A sticker size in millimetres. qr = fixed QR size in mm; left out, the QR is sized to fit. */
+export interface LabelSize { id: string; name: string; w: number; h: number; qr?: number }
+
 export interface Product {
   id: string; sku: string; name: string; cat: string; unit: string;
   pp: number;            // purchase price (ADMIN ONLY, never shown to salesmen)
@@ -25,6 +30,12 @@ export interface Product {
   brand?: string;        // company, e.g. "Prime"
   model?: string;        // product within the company (size/model), e.g. "Switch XL"
   variant?: string;      // the sellable variant, e.g. "Pro" (each variant is one SKU)
+  label?: LabelContent;  // what goes on this product's sticker (default: QR, code and MRP)
+  alias?: string;        // second name used for searching
+  printName?: string;    // name printed on bills; falls back to the full name
+  minSale?: number;      // lowest price this item may be sold at (per base unit)
+  desc?: string;         // free-text description
+  vendorId?: string;     // usual supplier
   shopOnly?: boolean;    // arrives directly at the shop: stock-in / purchases always go to Main Shop, no location prompt
 }
 export interface Vendor { id: string; name: string; phone: string; gst: string; terms: string; opening: number; }
@@ -78,7 +89,7 @@ export interface ReturnRec {
 export interface StockIn { id: string; no: string; date: string; by: string; note: string; lines: { pid: string; qty: number[] }[]; purchaseId?: string; }
 export interface Transfer { id: string; date: string; pid: string; from: number; to: number; qty: number; by: string; }
 export interface Adjustment { id: string; date: string; pid: string; loc: number; from: number; to: number; reason: string; by: string; }
-export interface Settings { pointsPer1000: number; repeatDays: number; estimateDays: number; linkDays: number; lateAfter: string; weeklyOff: number; locations?: string[]; }
+export interface Settings { pointsPer1000: number; repeatDays: number; estimateDays: number; linkDays: number; lateAfter: string; weeklyOff: number; locations?: string[]; labelSizes?: LabelSize[]; labelSizeId?: string; }
 export interface Counters { est: number; quo: number; ret: number; pur: number; sin: number; pay: number; }
 export interface Data {
   products: Product[]; vendors: Vendor[]; purchases: Purchase[];payments: VendorPayment[];

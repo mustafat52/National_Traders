@@ -51,6 +51,8 @@ interface Actions {
   convertEstimate: (estimateId: string, choices: { pid: string; price: number; alloc: number[] }[], cash: number, online: number) => Bill;
   processReturn: (r: { kind: 'sales' | 'damage'; billId: string; staffId: string; lines: { pid: string; qty: number; loc: number }[]; cash: number; online: number }) => void;
   updateSettings: (s: Settings) => void;
+  /** Owner only. Saves the list of sticker sizes and which one is in use. */
+  setLabelSizes: (sizes: NonNullable<Settings['labelSizes']>, selected?: string) => void;
   /** Owner only. Adds a storage place (a new godown); every product gets 0 stock there. */
   addLocation: (name: string) => void;
   renameLocation: (index: number, name: string) => void;
@@ -326,7 +328,8 @@ export const useStore = create<Store>()(
       }),
       setActiveDraft: (id) => set({ activeDraft: id }),
 
-      updateSettings: (settings) => set((s) => ({ settings: { ...settings, locations: s.settings.locations } })),
+      updateSettings: (settings) => set((s) => ({ settings: { ...settings, locations: s.settings.locations, labelSizes: s.settings.labelSizes, labelSizeId: s.settings.labelSizeId } })),
+      setLabelSizes: (sizes, selected) => { ownerOnly(get()); set((s) => ({ settings: { ...s.settings, labelSizes: sizes, labelSizeId: selected ?? s.settings.labelSizeId } })); },
       addLocation: (name) => { ownerOnly(get()); const n = name.trim().replace(/\s+/g, ' ');
         if (n.length < 2) throw new Error('Give the place a name, for example Godown 3');
         if (LOCS.some((x) => x.toLowerCase() === n.toLowerCase())) throw new Error('There is already a place with this name');
