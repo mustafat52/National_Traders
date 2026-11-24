@@ -67,6 +67,7 @@ export interface Bill {
   id: string; no: string; kind: 'estimate' | 'quotation'; code: string; date: string;
   staffId: string; customerId: string; tier: number; lines: BillLine[]; total: number;
   cash: number; online: number; points: number;
+  /** transport charge included in total (goods total = total - transport); earns no points or commission */ transport?: number;
   status: 'open' | 'paid' | 'converted'; fromEstimate?: string; validUntil?: string;
   /** set when the owner converted an estimate: who did it and when. Points go to staffId, the salesman who made the estimate. */
   convertedBy?: string; convertedAt?: string;
@@ -89,7 +90,7 @@ export interface ReturnRec {
 export interface StockIn { id: string; no: string; date: string; by: string; note: string; lines: { pid: string; qty: number[] }[]; purchaseId?: string; }
 export interface Transfer { id: string; date: string; pid: string; from: number; to: number; qty: number; by: string; }
 export interface Adjustment { id: string; date: string; pid: string; loc: number; from: number; to: number; reason: string; by: string; }
-export interface Settings { pointsPer1000: number; repeatDays: number; estimateDays: number; linkDays: number; lateAfter: string; weeklyOff: number; locations?: string[]; labelSizes?: LabelSize[]; labelSizeId?: string; }
+export interface Settings { pointsPer1000: number; repeatDays: number; estimateDays: number; linkDays: number; lateAfter: string; weeklyOff: number; /** fixed transport charge added to a bill when the salesman ticks Transport; 0 or missing = no transport charge */ transport?: number; locations?: string[]; labelSizes?: LabelSize[]; labelSizeId?: string; }
 export interface Counters { est: number; quo: number; ret: number; pur: number; sin: number; pay: number; }
 export interface Data {
   products: Product[]; vendors: Vendor[]; purchases: Purchase[];payments: VendorPayment[];

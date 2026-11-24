@@ -1,90 +1,55 @@
 'use client';
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import { Download, PackagePlus, Plus, Search } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Plus } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { download, fmtDate, toCsv } from '@/lib/rules';
+import { fmtDate, money } from '@/lib/rules';
 import { vendorAging, vendorBalance } from '@/lib/selectors';
-import { AGE, AgeBar } from '@/components/AgeBar';
-import { Rupee } from '@/components/Rupee';
+import { useScreenKeys } from '@/lib/hotkeys';
+import { DataGrid } from '@/components/grid/DataGrid';
+import { KBtn, ScreenHead } from '@/components/grid/Screen';
+import { toast } from '@/components/grid/Toast';
 import { VendorForm } from '@/components/VendorForm';
 
-const TINTS = ['bg-sage-bg text-sage-fg', 'bg-sky-bg text-sky-fg', 'bg-butter-bg text-butter-fg', 'bg-lilac-bg text-lilac-fg', 'bg-blush-bg text-blush-fg'];
-const card = 'rounded-[22px] border border-line bg-panel';
 type Filter = 'all' | 'owing' | 'overdue' | 'settled';
 
+/** Vendor: everyone the shop buys from, with what is owed to each and how old it is. */
 export default function Vendors() {
-  const d = useStore(); const [open, setOpen] = useState(false); const [q, setQ] = useState(''); const [flt, setFlt] = useState<Filter>('all');
-  const rows = useMemo(() => d.vendors.map((v, i) => {
+  const d = useStore(); const router = useRouter(); const [open, setOpen] = useState(false); const [q, setQ] = useState(''); const [flt, setFlt] = useState<Filter>('all');
+  const rows = useMemo(() => d.vendors.map((v) => {
     const bills = d.purchases.filter((p) => p.vendorId === v.id); const last = bills.reduce<typeof bills[number] | null>((a, p) => (!a || p.date > a.date ? p : a), null);
-    return { v, i, bal: vendorBalance(d, v.id), ag: vendorAging(d, v.id), last };
+    return { v, bal: vendorBalance(d, v.id), ag: vendorAging(d, v.id), last };
   }), [d.vendors, d.purchases, d.payments]); // eslint-disable-line react-hooks/exhaustive-deps
-  const total = rows.reduce((a, r) => a + Math.max(0, r.bal), 0);
-  const ageTotals = [0, 1, 2].map((k) => rows.reduce((a, r) => a + r.ag[k], 0));
-  const overdueCount = rows.filter((r) => r.ag[2] > 0).length;
+  const total = rows.reduce((a, r) => a + Math.max(0, r.bal), 0); const overdue = rows.filter((r) => r.ag[2] > 0).length;
   const paid30 = d.payments.filter((p) => Date.now() - new Date(p.date).getTime() < 30 * 86400000).reduce((a, p) => a + p.amount, 0);
-  const shown = rows.filter((r) => {
-    if (q.trim() && !`${r.v.name} ${r.v.phone}`.toLowerCase().includes(q.trim().toLowerCase())) return false;
-    return flt === 'all' || (flt === 'owing' && r.bal > 0) || (flt === 'overdue' && r.ag[2] > 0) || (flt === 'settled' && r.bal <= 0);
-  }).sort((a, b) => b.bal - a.bal);
-  const exportCsv = () => download('vendor-payables.csv', toCsv([['Vendor', 'Phone', 'Terms', 'Owed', 'Under 30 days', '30 to 60 days', 'Over 60 days'], ...rows.map((r) => [r.v.name, r.v.phone, r.v.terms, r.bal, ...r.ag.map(Math.round)])]));
-  const chip = (k: Filter, label: string, n: number) => (
-    <button key={k} onClick={() => setFlt(k)} aria-pressed={flt === k} className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${flt === k ? 'bg-sage-bg text-sage-fg' : 'bg-white text-steel hover:text-ink'}`}>{label} <span className="opacity-60">{n}</span></button>
-  );
+  const shown = rows.filter((r) => (!q.trim() || `${r.v.name} ${r.v.phone}`.toLowerCase().includes(q.trim().toLowerCase()))
+    && (flt === 'all' || (flt === 'owing' && r.bal > 0) || (flt === 'overdue' && r.ag[2] > 0) || (flt === 'settled' && r.bal <= 0)));
+  useScreenKeys([{ key: 'N', label: 'New vendor', run: () => setOpen(true) }, { key: '/', label: 'Search', run: () => document.getElementById('v-q')?.focus() }, { key: 'Esc', label: open ? 'Close' : '', run: () => setOpen(false), hidden: !open, typing: true }]);
+  const tile = (k: Filter, label: string, n: number, sub = '', tone = '') => (
+    <button key={k} onClick={() => setFlt(k)} aria-pressed={flt === k} className={`min-w-[130px] rounded-md border px-3 py-1.5 text-left transition ${flt === k ? 'border-gold bg-sage-bg/60' : 'border-line bg-white hover:bg-paper'}`}>
+      <div className={`text-[20px] font-semibold leading-tight tabular-nums ${tone}`}>{n}</div><div className="text-[11.5px] text-steel">{label}{sub ? ` · ${sub}` : ''}</div></button>);
 
   return (
-    <div className="mx-auto max-w-[1280px]">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="font-display text-[40px] font-semibold leading-none tracking-tight">Vendors</h1><p className="mt-1 text-steel">Who you buy from, and what you owe them. Bills come in through Stock In.</p></div>
-        <div className="flex gap-2">
-          <Link href="/admin/stockin" className="flex items-center gap-1.5 rounded-xl border border-line bg-white px-4 py-2.5 text-sm font-medium hover:bg-paper"><PackagePlus className="h-4 w-4" />Record a delivery</Link>
-          <button onClick={() => setOpen(!open)} className="flex items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-light"><Plus className="h-4 w-4" />Add vendor</button>
-        </div>
+    <div>
+      <ScreenHead title="Vendor" hint={`${d.vendors.length} vendors · you owe ${money(total)} · paid ${money(paid30)} in the last 30 days. Bills come in through Stock In.`}>
+        <input id="v-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a vendor   ( / )" className="!w-56 !rounded-md !px-2.5 !py-1.5 text-[13px]" />
+        <KBtn primary k="N" onClick={() => setOpen(true)}><Plus className="h-4 w-4" />New vendor</KBtn>
+      </ScreenHead>
+      {open && <div className="mb-3"><VendorForm title="Vendor: Add" saveLabel="Save vendor" onCancel={() => setOpen(false)} onSave={(v) => { d.addVendor(v); setOpen(false); toast(`${v.name} added`); }} /></div>}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {tile('all', 'All vendors', rows.length)}{tile('owing', 'Owe money', rows.filter((r) => r.bal > 0).length, money(total))}{tile('overdue', 'Over 60 days', overdue, '', overdue ? 'text-blush-fg' : '')}{tile('settled', 'Settled', rows.filter((r) => r.bal <= 0).length)}
       </div>
-
-      {open && <div className="mb-6"><VendorForm saveLabel="Save vendor" onCancel={() => setOpen(false)} onSave={(v) => { d.addVendor(v); setOpen(false); }} /></div>}
-
-      <section className="mb-6 rounded-[28px] bg-sage-bg p-6 text-sage-fg md:p-8">
-        <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
-          <div>
-            <div className="text-sm font-medium">You owe vendors</div>
-            <Rupee v={total} animate className="font-display text-[56px] font-semibold leading-none text-ink md:text-[72px]" />
-          </div>
-          <div className="flex flex-wrap gap-2 text-sm">
-            <span className="rounded-full bg-white/60 px-3 py-1 font-medium">{d.vendors.length} vendors</span>
-            <span className={`rounded-full px-3 py-1 font-medium ${overdueCount ? 'bg-blush-bg text-blush-fg' : 'bg-white/60'}`}>{overdueCount ? `${overdueCount} with bills over 60 days old` : 'Nothing over 60 days'}</span>
-            <span className="rounded-full bg-white/60 px-3 py-1">Paid in the last 30 days <Rupee v={paid30} className="font-medium" /></span>
-          </div>
-        </div>
-        <div className="mt-6"><AgeBar ag={ageTotals} tall /></div>
-        <ul className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-          {AGE.map((a, k) => <li key={a.label} className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-full" style={{ background: a.color }} />{a.label} <Rupee v={ageTotals[k]} className="font-semibold text-ink" /></li>)}
-        </ul>
-      </section>
-
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[14rem] flex-1 sm:max-w-sm"><Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-steel" /><input className="w-full !rounded-2xl !py-2.5 !pl-10" placeholder="Search a vendor" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        {chip('all', 'All', rows.length)}{chip('owing', 'Owe money', rows.filter((r) => r.bal > 0).length)}{chip('overdue', 'Over 60 days', overdueCount)}{chip('settled', 'Settled', rows.filter((r) => r.bal <= 0).length)}
-        <button onClick={exportCsv} className="ml-auto flex items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-2 text-sm font-medium hover:bg-paper"><Download className="h-4 w-4" />Export CSV</button>
-      </div>
-
-      {shown.length === 0 && <div className={`${card} p-8 text-center text-steel`}>{d.vendors.length === 0 ? 'No vendors yet. Add the first one above.' : 'No vendor matches this search.'}</div>}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {shown.map(({ v, i, bal, ag, last }) => (
-          <Link key={v.id} href={`/admin/vendors/${v.id}`} className={`${card} block p-5 transition hover:border-sage-mid`}>
-            <div className="flex items-start gap-3">
-              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-display text-lg font-bold ${TINTS[i % TINTS.length]}`}>{v.name[0]}</span>
-              <div className="min-w-0 flex-1"><div className="truncate font-display text-lg font-semibold leading-tight">{v.name}</div><div className="truncate text-xs text-steel">{v.phone || 'No phone'}, {v.terms}</div></div>
-            </div>
-            <div className="mt-4 flex items-end justify-between gap-2">
-              <div><div className="text-xs text-steel">{bal < 0 ? 'Advance with vendor' : 'You owe'}</div><Rupee v={Math.abs(bal)} className="font-display text-[30px] font-semibold leading-none" /></div>
-              {ag[2] > 0 && <span className="rounded-full bg-blush-bg px-2.5 py-1 text-xs font-medium text-blush-fg">{Math.round(ag[2]).toLocaleString('en-IN')} over 60 days</span>}
-            </div>
-            <div className="mt-3"><AgeBar ag={ag} /></div>
-            <div className="mt-3 text-xs text-steel">{last ? <>Last bill {fmtDate(last.date)}, {last.billNo}</> : 'No bills recorded yet'}</div>
-          </Link>
-        ))}
-      </div>
+      <DataGrid csvName="vendors" rows={shown} rowKey={(r) => r.v.id} onOpen={(r) => router.push(`/admin/vendors/${r.v.id}`)} openOnClick maxH="calc(100vh - 250px)" empty={d.vendors.length ? 'No vendor matches' : 'No vendors yet. Press N to add the first one.'}
+        cols={[
+          { h: 'Vendor', v: (r) => <span className="font-medium">{r.v.name}</span>, csv: (r) => r.v.name, sort: (r) => r.v.name },
+          { h: 'Phone', v: (r) => r.v.phone || <span className="text-steel">—</span>, csv: (r) => r.v.phone, sort: (r) => r.v.phone },
+          { h: 'Terms', v: (r) => r.v.terms, csv: (r) => r.v.terms, sort: (r) => r.v.terms },
+          { h: 'Balance', right: true, v: (r) => (r.bal < 0 ? <span className="text-good">{money(-r.bal)} advance</span> : <span className="font-semibold">{money(r.bal)}</span>), csv: (r) => r.bal, sort: (r) => r.bal },
+          { h: 'Under 30 days', right: true, v: (r) => (r.ag[0] ? money(r.ag[0]) : '—'), csv: (r) => Math.round(r.ag[0]), sort: (r) => r.ag[0] },
+          { h: '30 to 60 days', right: true, v: (r) => (r.ag[1] ? money(r.ag[1]) : '—'), csv: (r) => Math.round(r.ag[1]), sort: (r) => r.ag[1] },
+          { h: 'Over 60 days', right: true, v: (r) => (r.ag[2] ? <span className="font-medium text-blush-fg">{money(r.ag[2])}</span> : '—'), csv: (r) => Math.round(r.ag[2]), sort: (r) => r.ag[2] },
+          { h: 'Last bill', v: (r) => (r.last ? `${fmtDate(r.last.date)} · ${r.last.billNo}` : <span className="text-steel">none yet</span>), csv: (r) => (r.last ? r.last.date : ''), sort: (r) => r.last?.date ?? '' },
+        ]} />
     </div>
   );
 }

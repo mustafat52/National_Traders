@@ -23,6 +23,7 @@ export default function PublicBill() {
       <div className="my-3 text-sm">Customer: <b>{cu?.name || cu?.phone}</b>{cu?.name && <span className="text-slate-500"> · {cu.phone}</span>}</div>
       <table className="w-full text-sm"><thead><tr className="bg-brand-soft text-left text-xs uppercase"><th className="px-2 py-2">Item</th><th className="px-2 text-right">Qty</th><th className="px-2 text-right">Rate</th><th className="px-2 text-right">Amount</th></tr></thead>
         <tbody>{b.lines.map((l) => <tr key={l.pid} className="border-b border-slate-100"><td className="px-2 py-2">{pm.get(l.pid)?.name}</td><td className="px-2 text-right">{qtyText(l.qty, pm.get(l.pid)?.unit ?? '', l.pack)}</td><td className="px-2 text-right">{money(l.price)}</td><td className="px-2 text-right">{money(l.qty * l.price)}</td></tr>)}</tbody></table>
+      {b.transport ? <div className="mt-2 flex justify-end gap-6 text-sm text-slate-600"><span>Transport charges</span><span>{money(b.transport)}</span></div> : null}
       <div className="mt-3 flex justify-end border-t-2 border-gold pt-2 font-display text-xl font-semibold">Total {money(b.total)}</div>
       {b.kind === 'quotation' && <div className="text-right text-xs text-slate-500">Paid: cash {money(b.cash)}, online {money(b.online)}</div>}
       {b.kind === 'estimate' && <p className="mt-4 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">Valid until {fmtDate(b.validUntil!)}. Prices and availability are subject to change.</p>}

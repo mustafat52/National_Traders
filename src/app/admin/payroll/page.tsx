@@ -1,114 +1,95 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, Download, FileText, Plus, Trash2, Undo2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { dk, download, fmtDate, money, toCsv } from '@/lib/rules';
+import { dk, fmtDate, money } from '@/lib/rules';
 import { PayCalc, computePay, hm, monthLabel, shiftMonth } from '@/lib/payroll';
 import { AdjustKind, Staff } from '@/lib/types';
-import { Rupee } from '@/components/Rupee';
-import { Avatar, Banner, Title, card, errText } from '@/components/StaffBits';
+import { useScreenKeys } from '@/lib/hotkeys';
+import { DataGrid } from '@/components/grid/DataGrid';
+import { KBtn, ScreenHead } from '@/components/grid/Screen';
+import { Field, Panel } from '@/components/grid/Panel';
+import { toast } from '@/components/grid/Toast';
+import { errText } from '@/components/StaffBits';
 
+const sel = 'rounded-md border border-line bg-white px-2 py-1 text-[13px]';
+/** Salaries and Payroll: one month's salary statement. Click a person to see the working, add a bonus or advance, and mark it paid. */
 export default function PayrollPage() {
-  const d = useStore(); const cur = dk(new Date()).slice(0, 7); const [month, setMonth] = useState(cur);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const d = useStore(); const cur = dk(new Date()).slice(0, 7); const [month, setMonth] = useState(cur); const [pick, setPick] = useState('');
   const people = d.staff.filter((s) => s.role === 'salesman');
   const rows = people.map((s) => ({ s, c: computePay(d, s, month) }));
   const total = rows.reduce((a, r) => a + r.c.net, 0); const paid = rows.filter((r) => r.c.payslip).reduce((a, r) => a + r.c.net, 0);
-  const cuts = rows.reduce((a, r) => a + r.c.leaveCut + r.c.absentCut + r.c.joinCut, 0);
-  const exportCsv = () => download(`payroll-${month}.csv`, toCsv([['Staff', 'Monthly salary', 'Working days', 'Present', 'Paid leave', 'Unpaid leave', 'Absent', 'Leave cut', 'Absent cut', 'Bonus', 'Advance', 'Other deduction', 'Net pay', 'Status'],
-    ...rows.map(({ s, c }) => [s.name, c.base, c.workingDays, c.present, c.paidLeave, c.unpaidLeave, c.absent, c.leaveCut, c.absentCut, c.bonus, c.advance, c.other, c.net, c.payslip ? `Paid ${fmtDate(c.payslip.paidOn)} (${c.payslip.mode})` : 'Not paid'])]));
+  const chosen = rows.find((r) => r.s.id === pick) ?? rows[0];
+  const cut = (c: PayCalc) => c.leaveCut + c.absentCut + c.joinCut;
   return (
-    <div className="mx-auto max-w-[1100px]">
-      <Title title="Payroll" sub="Salary for the month after paid and unpaid leave, absences, bonus and advances. Once you mark a salary paid, its figures are frozen.">
-        <button onClick={exportCsv} className="flex items-center gap-2 rounded-xl border border-line bg-white px-4 py-2 text-sm font-medium hover:bg-paper"><Download className="h-4 w-4" />Export month</button>
-      </Title>
-      <div className="mb-4 flex items-center gap-2">
-        <button onClick={() => setMonth(shiftMonth(month, -1))} className="rounded-xl border border-line bg-white p-2.5 hover:bg-paper" aria-label="Previous month"><ChevronLeft className="h-4 w-4" /></button>
-        <div className="min-w-44 text-center font-display text-xl font-semibold">{monthLabel(month)}</div>
-        <button onClick={() => setMonth(shiftMonth(month, 1))} disabled={month >= cur} className="rounded-xl border border-line bg-white p-2.5 hover:bg-paper disabled:opacity-40" aria-label="Next month"><ChevronRight className="h-4 w-4" /></button>
-        {month === cur && <span className="ml-2 rounded-full bg-butter-bg px-3 py-1 text-xs font-medium text-butter-fg">Month in progress: figures change daily</span>}
-      </div>
-      <Banner msg={msg} onClose={() => setMsg(null)} />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[['Net payroll', total, 'bg-sage-bg text-sage-fg'], ['Paid out', paid, 'bg-sky-bg text-sky-fg'], ['Still to pay', total - paid, 'bg-butter-bg text-butter-fg'], ['Cut for leave & absence', cuts, 'bg-lilac-bg text-lilac-fg']].map(([k, v, c]) => (
-          <div key={k as string} className={`rounded-[20px] p-4 ${c}`}><div className="text-sm font-medium opacity-80">{k}</div><div className="font-display text-[34px] font-semibold leading-none"><Rupee v={v as number} animate /></div></div>
-        ))}
-      </div>
-      <div className="mt-5 space-y-4">{rows.map(({ s, c }) => <Slip key={s.id + month} s={s} c={c} month={month} onMsg={setMsg} />)}</div>
+    <div className="max-w-6xl">
+      <ScreenHead title="Salaries and Payroll" hint="Salary after unpaid leave, absences, bonus and advances. Once a salary is marked paid its figures are frozen.">
+        <button onClick={() => setMonth(shiftMonth(month, -1))} aria-label="Previous month" className="rounded-md border border-line bg-white p-1.5 hover:bg-paper"><ChevronLeft className="h-4 w-4" /></button>
+        <b className="min-w-36 text-center text-[13px]">{monthLabel(month)}</b>
+        <button onClick={() => setMonth(shiftMonth(month, 1))} disabled={month >= cur} aria-label="Next month" className="rounded-md border border-line bg-white p-1.5 hover:bg-paper disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+      </ScreenHead>
+      <p className="mb-2 text-[13px] text-steel">Net payroll <b className="text-ink">{money(total)}</b> · paid <b className="text-ink">{money(paid)}</b> · still to pay <b className="text-ink">{money(total - paid)}</b>{month === cur && ' · month in progress, figures change daily'}</p>
+      <DataGrid csvName={`payroll-${month}`} rows={rows} rowKey={(r) => r.s.id} onOpen={(r) => setPick(r.s.id)} onActive={(r) => setPick(r.s.id)} openOnClick empty="No salesmen yet"
+        cols={[
+          { h: 'Staff', v: (r) => <span className="font-medium">{r.s.name}</span>, csv: (r) => r.s.name, sort: (r) => r.s.name },
+          { h: 'Salary', right: true, v: (r) => money(r.c.base), csv: (r) => r.c.base, sort: (r) => r.c.base },
+          { h: 'Working days', right: true, v: (r) => r.c.workingDays, csv: (r) => r.c.workingDays }, { h: 'Present', right: true, v: (r) => r.c.present, csv: (r) => r.c.present },
+          { h: 'Paid leave', right: true, v: (r) => r.c.paidLeave || '-', csv: (r) => r.c.paidLeave }, { h: 'Unpaid leave', right: true, v: (r) => r.c.unpaidLeave || '-', csv: (r) => r.c.unpaidLeave }, { h: 'Absent', right: true, v: (r) => r.c.absent || '-', csv: (r) => r.c.absent },
+          { h: 'Cut', right: true, v: (r) => (cut(r.c) ? money(cut(r.c)) : '-'), csv: (r) => cut(r.c) }, { h: 'Bonus', right: true, v: (r) => (r.c.bonus ? money(r.c.bonus) : '-'), csv: (r) => r.c.bonus },
+          { h: 'Advance and other', right: true, v: (r) => (r.c.advance + r.c.other ? money(r.c.advance + r.c.other) : '-'), csv: (r) => r.c.advance + r.c.other },
+          { h: 'Net pay', right: true, v: (r) => <b>{money(r.c.net)}</b>, csv: (r) => r.c.net, sort: (r) => r.c.net },
+          { h: 'Status', v: (r) => (r.c.payslip ? `Paid ${fmtDate(r.c.payslip.paidOn)}` : <span className="text-butter-fg">Not paid</span>), csv: (r) => (r.c.payslip ? `Paid ${r.c.payslip.mode}` : 'Not paid') },
+        ]} />
+      {chosen && <Slip key={chosen.s.id + month} s={chosen.s} c={chosen.c} month={month} />}
     </div>
   );
 }
 
-function Slip({ s, c, month, onMsg }: { s: Staff; c: PayCalc; month: string; onMsg: (m: { ok: boolean; text: string }) => void }) {
-  const d = useStore(); const [adding, setAdding] = useState(false); const [paying, setPaying] = useState(false);
-  const [f, setF] = useState<{ kind: AdjustKind; amount: string; note: string }>({ kind: 'bonus', amount: '', note: '' }); const [mode, setMode] = useState('Cash'); const [err, setErr] = useState('');
-  const locked = !!c.payslip;
-  const run = (fn: () => void, ok?: string) => { try { fn(); setErr(''); if (ok) onMsg({ ok: true, text: ok }); return true; } catch (e) { setErr(errText(e)); return false; } };
-  const Line = ({ k, v, sub, tone }: { k: string; v: number; sub?: string; tone?: 'minus' | 'plus' }) => (
-    <div className="flex items-baseline justify-between gap-3 py-1.5 text-sm"><div>{k}{sub && <span className="ml-2 text-xs text-steel">{sub}</span>}</div><div className={`tabular-nums ${tone === 'minus' ? 'text-blush-fg' : tone === 'plus' ? 'text-sage-fg' : ''}`}>{tone === 'minus' ? '−' : tone === 'plus' ? '+' : ''}{money(v)}</div></div>
-  );
+function Slip({ s, c, month }: { s: Staff; c: PayCalc; month: string }) {
+  const d = useStore(); const locked = !!c.payslip;
+  const [kind, setKind] = useState<AdjustKind>('bonus'); const [amt, setAmt] = useState(''); const [note, setNote] = useState(''); const [mode, setMode] = useState('Cash'); const [err, setErr] = useState('');
+  useEffect(() => setErr(''), [month, s.id]);
+  const run = (fn: () => void, ok?: string) => { try { fn(); setErr(''); if (ok) toast(ok); return true; } catch (e) { setErr(errText(e)); return false; } };
+  const addAdj = () => { if (run(() => d.addPayAdjust(s.id, month, kind, +amt, note))) { setAmt(''); setNote(''); } };
+  const pay = () => run(() => d.payStaff(s.id, month, mode), `${s.name}'s salary for ${monthLabel(month)} marked as paid`);
+  useScreenKeys(locked ? [] : [{ key: 'F2', label: 'Mark paid', run: pay }]);
+  const L = ({ k, v, sub, minus }: { k: string; v: number; sub?: string; minus?: boolean }) => <Field label={k}><span className="tabular-nums">{minus ? '- ' : ''}{money(v)}{sub && <span className="ml-2 text-[12px] text-steel">{sub}</span>}</span></Field>;
   return (
-    <div className={`${card} p-5`}>
-      <div className="flex flex-wrap items-center gap-3">
-        <Avatar staff={d.staff} id={s.id} size="lg" />
-        <div className="min-w-0 flex-1"><div className="font-display text-xl font-semibold">{s.name}</div><div className="text-sm text-steel">Monthly salary {money(s.salary)}</div></div>
-        <div className="text-right"><div className="text-xs text-steel">{locked ? 'Paid' : 'Net pay'}</div><div className="font-display text-3xl font-semibold text-brand"><Rupee v={c.net} /></div></div>
-      </div>
-      <div className="mt-4 flex flex-wrap gap-2 text-xs">
-        <span className="rounded-full bg-sage-bg px-3 py-1 text-sage-fg">Present {c.present} of {c.workingDays} days</span>
-        {c.late > 0 && <span className="rounded-full bg-butter-bg px-3 py-1 text-butter-fg">Late {c.late}×</span>}
-        {c.paidLeave > 0 && <span className="rounded-full bg-sky-bg px-3 py-1 text-sky-fg">Paid leave {c.paidLeave}</span>}
-        {c.unpaidLeave > 0 && <span className="rounded-full bg-lilac-bg px-3 py-1 text-lilac-fg">Unpaid leave {c.unpaidLeave}</span>}
-        {c.absent > 0 && <span className="rounded-full bg-blush-bg px-3 py-1 text-blush-fg">Absent {c.absent}</span>}
-        <span className="rounded-full bg-paper px-3 py-1 text-steel">{hm(c.minutes)} worked</span>
-      </div>
-      <div className="mt-3 divide-y divide-line rounded-2xl bg-paper px-4 py-2">
-        <Line k="Monthly salary" v={c.base} sub={`${c.workingDays} working days, ${money(c.perDay)} a day`} />
-        {c.joinCut > 0 && <Line k="Before joining" v={c.joinCut} tone="minus" />}
-        {c.unpaidLeave > 0 && <Line k="Unpaid leave" v={c.leaveCut} tone="minus" sub={`${c.unpaidLeave} day${c.unpaidLeave > 1 ? 's' : ''}`} />}
-        {c.absent > 0 && <Line k="Absent without leave" v={c.absentCut} tone="minus" sub={`${c.absent} day${c.absent > 1 ? 's' : ''}`} />}
-        {c.paidLeave > 0 && <div className="flex justify-between py-1.5 text-sm text-steel"><span>Paid leave ({c.paidLeave} day{c.paidLeave > 1 ? 's' : ''})</span><span>no deduction</span></div>}
+    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+      <Panel title={`${s.name}: ${monthLabel(month)}`} hint={`${hm(c.minutes)} worked${c.late ? ` · late ${c.late}×` : ''}`}>
+        <L k="Monthly salary" v={c.base} sub={`${c.workingDays} working days, ${money(c.perDay)} a day`} />
+        {c.joinCut > 0 && <L k="Before joining" v={c.joinCut} minus />}
+        {c.unpaidLeave > 0 && <L k="Unpaid leave" v={c.leaveCut} minus sub={`${c.unpaidLeave} day${c.unpaidLeave > 1 ? 's' : ''}`} />}
+        {c.absent > 0 && <L k="Absent without leave" v={c.absentCut} minus sub={`${c.absent} day${c.absent > 1 ? 's' : ''}`} />}
+        {c.paidLeave > 0 && <Field label="Paid leave"><span className="text-steel">{c.paidLeave} day{c.paidLeave > 1 ? 's' : ''}, no deduction</span></Field>}
         {c.adjusts.map((a) => (
-          <div key={a.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
-            <div>{a.kind === 'bonus' ? 'Bonus' : a.kind === 'advance' ? 'Advance recovered' : 'Deduction'}<span className="ml-2 text-xs text-steel">{a.note}</span></div>
-            <div className="flex items-center gap-2"><span className={`tabular-nums ${a.kind === 'bonus' ? 'text-sage-fg' : 'text-blush-fg'}`}>{a.kind === 'bonus' ? '+' : '−'}{money(a.amount)}</span>
-              {!locked && <button aria-label="Remove" className="text-steel hover:text-blush-fg" onClick={() => run(() => d.removePayAdjust(a.id))}><Trash2 className="h-3.5 w-3.5" /></button>}</div>
-          </div>))}
-        <div className="flex justify-between py-2 font-display text-lg font-semibold"><span>Net pay</span><span>{money(c.net)}</span></div>
-      </div>
-      {err && <p role="alert" className="mt-2 text-sm text-blush-fg">{err}</p>}
-
-      {adding && !locked && (
-        <div className="fade-up mt-3 grid gap-2 rounded-2xl border border-line p-3 sm:grid-cols-[9rem_8rem_1fr_auto]">
-          <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as AdjustKind })}><option value="bonus">Bonus (add)</option><option value="advance">Advance (recover)</option><option value="deduction">Deduction</option></select>
-          <input type="number" placeholder="Amount" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} />
-          <input placeholder="Note, e.g. Diwali bonus" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
-          <button className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white" onClick={() => run(() => d.addPayAdjust(s.id, month, f.kind, +f.amount, f.note)) && (setF({ kind: 'bonus', amount: '', note: '' }), setAdding(false))}>Add</button>
-        </div>)}
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Field key={a.id} label={a.kind === 'bonus' ? 'Bonus' : a.kind === 'advance' ? 'Advance recovered' : 'Deduction'}>
+            <span className="tabular-nums">{a.kind === 'bonus' ? '+ ' : '- '}{money(a.amount)}{a.note && <span className="ml-2 text-[12px] text-steel">{a.note}</span>}
+              {!locked && <button aria-label="Remove" className="ml-2 align-middle text-steel hover:text-blush-fg" onClick={() => run(() => d.removePayAdjust(a.id))}><Trash2 className="inline h-3.5 w-3.5" /></button>}</span>
+          </Field>))}
+        <Field label="Net pay"><b className="text-[18px] tabular-nums">{money(c.net)}</b></Field>
+      </Panel>
+      <Panel title={locked ? 'Paid' : 'Add and pay'}>
         {locked ? (
           <>
-            <span className="rounded-full bg-sage-bg px-3 py-1.5 text-sm font-medium text-sage-fg">Paid {fmtDate(c.payslip!.paidOn)} by {c.payslip!.mode.toLowerCase()} · {c.payslip!.no}</span>
-            <Link href={`/admin/payroll/${s.id}/${month}`} className="flex items-center gap-1.5 rounded-xl border border-line px-3.5 py-2 text-sm font-medium hover:bg-paper"><FileText className="h-4 w-4" />Payslip</Link>
-            <button className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-steel hover:bg-paper" onClick={() => confirm('Reopen this payslip? Leaves and adjustments for the month become editable again and the payment record is removed.') && d.reopenPayslip(c.payslip!.id)}><Undo2 className="h-4 w-4" />Reopen</button>
+            <Field label="Paid on">{fmtDate(c.payslip!.paidOn)} by {c.payslip!.mode.toLowerCase()}</Field><Field label="Payslip no.">{c.payslip!.no}</Field>
+            <div className="flex gap-2 py-2"><Link href={`/admin/payroll/${s.id}/${month}`} className="rounded-md border border-line bg-white px-3 py-1.5 text-[13px] font-medium hover:bg-paper">Open payslip</Link>
+              <KBtn onClick={() => confirm('Reopen this payslip? Leaves and adjustments for the month become editable again and the payment record is removed.') && d.reopenPayslip(c.payslip!.id)}>Reopen</KBtn></div>
           </>
-        ) : paying ? (
-          <div className="fade-up flex flex-wrap items-center gap-2 rounded-2xl bg-sage-bg px-3 py-2 text-sm text-sage-fg">
-            Pay {money(c.net)} by
-            <select value={mode} onChange={(e) => setMode(e.target.value)}><option>Cash</option><option>Online</option><option>Bank transfer</option></select>
-            <button className="rounded-xl bg-brand px-4 py-2 font-medium text-white" onClick={() => run(() => d.payStaff(s.id, month, mode), `${s.name}'s salary for ${monthLabel(month)} marked as paid.`) && setPaying(false)}>Confirm paid</button>
-            <button className="px-2 underline" onClick={() => setPaying(false)}>Cancel</button>
-          </div>
         ) : (
           <>
-            <button className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-light" onClick={() => setPaying(true)}>Mark as paid</button>
-            <button className="flex items-center gap-1.5 rounded-xl border border-line px-3.5 py-2 text-sm font-medium hover:bg-paper" onClick={() => setAdding(!adding)}><Plus className="h-4 w-4" />Bonus, advance or deduction</button>
-            <Link href={`/admin/payroll/${s.id}/${month}`} className="px-2 text-sm text-steel underline">Preview payslip</Link>
+            <Field label="Add"><span className="flex flex-wrap items-center gap-2">
+              <select aria-label="Type" className={sel} value={kind} onChange={(e) => setKind(e.target.value as AdjustKind)}><option value="bonus">Bonus (add)</option><option value="advance">Advance (recover)</option><option value="deduction">Deduction</option></select>
+              <input aria-label="Amount" type="number" min={0} placeholder="Amount" className="!w-28 !rounded-md !px-2 !py-1 text-[13px]" value={amt} onChange={(e) => setAmt(e.target.value)} />
+              <input aria-label="Note" placeholder="Note, e.g. Diwali bonus" className="!w-48 !rounded-md !px-2 !py-1 text-[13px]" value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addAdj()} />
+              <KBtn onClick={addAdj}>Add</KBtn></span></Field>
+            <Field label="Pay by"><span className="flex items-center gap-2"><select aria-label="Payment mode" className={sel} value={mode} onChange={(e) => setMode(e.target.value)}><option>Cash</option><option>Online</option><option>Bank transfer</option></select>
+              <KBtn primary k="F2" onClick={pay}>Mark {money(c.net)} as paid</KBtn><Link href={`/admin/payroll/${s.id}/${month}`} className="text-[12.5px] text-steel underline">Preview payslip</Link></span></Field>
           </>
         )}
-      </div>
+        {err && <p role="alert" className="my-1.5 rounded bg-blush-bg px-3 py-1.5 text-[12.5px] text-blush-fg">{err}</p>}
+      </Panel>
     </div>
   );
 }

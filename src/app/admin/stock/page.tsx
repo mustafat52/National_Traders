@@ -21,7 +21,7 @@ export default function StockPosition() {
           { h: 'Product', v: (p) => p.name, csv: (p) => p.name },
           ...LOCS.map((l, i) => ({ h: l, right: true, v: (p: typeof list[number]) => p.stock[i] ?? 0, csv: (p: typeof list[number]) => p.stock[i] ?? 0 })),
           { h: 'Total', right: true, v: (p) => <span className={isLow(p) ? 'font-semibold text-blush-fg' : 'font-semibold'}>{packBreakdown(stockTotal(p), p.unit, p.packs)}</span>, csv: stockTotal, sort: stockTotal },
-          { h: 'Alert at', right: true, v: (p) => p.min, csv: (p) => p.min },
+          { h: 'Minimum', right: true, v: (p) => p.min, csv: (p) => p.min },
           { h: 'Value', right: true, v: (p) => money(stockTotal(p) * p.pp), csv: (p) => stockTotal(p) * p.pp, sort: (p) => stockTotal(p) * p.pp },
         ]} />
     </div>

@@ -1,197 +1,139 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Pencil, UserPlus } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { dk, download, fmtDate, fmtTime, money, toCsv } from '@/lib/rules';
 import { DAY_NAMES, DayState, breakMinutes, dayOfWeek, dayState, hm, isLate, monthKeys, monthLabel, shiftMonth, workedMinutes } from '@/lib/payroll';
 import { Staff } from '@/lib/types';
-import { CountUp } from '@/components/CountUp';
-import { Rupee } from '@/components/Rupee';
-import { Avatar, Banner, Seg, Title, card, errText } from '@/components/StaffBits';
+import { useScreenKeys } from '@/lib/hotkeys';
+import { DataGrid } from '@/components/grid/DataGrid';
+import { KBtn, ScreenHead } from '@/components/grid/Screen';
+import { Field, Panel } from '@/components/grid/Panel';
+import { toast } from '@/components/grid/Toast';
+import { errText } from '@/components/StaffBits';
 
 type View = 'day' | 'month' | 'team';
-const STATE: Record<DayState, { label: string; cell: string; chip: string; code: string }> = {
-  present: { label: 'Present', cell: 'bg-sage-bg text-sage-fg', chip: 'bg-sage-bg text-sage-fg', code: 'P' },
-  late: { label: 'Late', cell: 'bg-butter-bg text-butter-fg', chip: 'bg-butter-bg text-butter-fg', code: 'P' },
-  'paid-leave': { label: 'Paid leave', cell: 'bg-sky-bg text-sky-fg', chip: 'bg-sky-bg text-sky-fg', code: 'PL' },
-  'unpaid-leave': { label: 'Unpaid leave', cell: 'bg-lilac-bg text-lilac-fg', chip: 'bg-lilac-bg text-lilac-fg', code: 'UL' },
-  'pending-leave': { label: 'Leave awaiting decision', cell: 'border border-dashed border-butter-fg/40 bg-white text-butter-fg', chip: 'bg-butter-bg text-butter-fg', code: '?' },
-  absent: { label: 'Absent', cell: 'bg-blush-bg text-blush-fg', chip: 'bg-blush-bg text-blush-fg', code: 'A' },
-  off: { label: 'Weekly off', cell: 'bg-paper text-steel/60', chip: 'bg-paper text-steel', code: '–' },
-  future: { label: 'Not in yet', cell: 'text-steel/40', chip: 'bg-butter-bg text-butter-fg', code: '' },
-  'before-joining': { label: 'Not joined yet', cell: 'text-steel/30', chip: 'bg-paper text-steel', code: '' },
+const STATE: Record<DayState, { label: string; code: string; cls: string }> = {
+  present: { label: 'Present', code: 'P', cls: 'text-good' }, late: { label: 'Late', code: 'P', cls: 'bg-butter-bg text-butter-fg' },
+  'paid-leave': { label: 'Paid leave', code: 'PL', cls: 'text-steel' }, 'unpaid-leave': { label: 'Unpaid leave', code: 'UL', cls: 'text-steel' },
+  'pending-leave': { label: 'Leave awaiting decision', code: '?', cls: 'text-butter-fg' }, absent: { label: 'Absent', code: 'A', cls: 'bg-blush-bg font-semibold text-blush-fg' },
+  off: { label: 'Weekly off', code: '-', cls: 'text-steel/50' }, future: { label: 'Not in yet', code: '', cls: '' }, 'before-joining': { label: 'Not joined yet', code: '', cls: '' },
 };
-const T0 = 8, T1 = 21; // timeline runs 8:00 to 21:00
-const pct = (iso: string, day: string) => { const x = new Date(iso); const h = x.getHours() + x.getMinutes() / 60 + (dk(x) > day ? 24 : 0); return Math.max(0, Math.min(100, ((h - T0) / (T1 - T0)) * 100)); };
+const th = 'px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-steel';
+const tab = (on: boolean) => `border-b-2 px-3 py-1.5 text-[13px] font-medium ${on ? 'border-gold text-ink' : 'border-transparent text-steel hover:text-ink'}`;
 
+/** Staff and Attendance: today's attendance, the month at a glance, and the salesman list with salaries. */
 export default function StaffAdmin() {
-  const d = useStore(); const { staff, attendance, settings } = d;
-  const [view, setView] = useState<View>('day'); const today = dk(new Date());
-  const [day, setDay] = useState(today); const [month, setMonth] = useState(today.slice(0, 7));
+  const d = useStore(); const { staff, attendance, settings } = d; const today = dk(new Date());
+  const [view, setView] = useState<View>('day'); const [day, setDay] = useState(today); const [month, setMonth] = useState(today.slice(0, 7));
   const people = useMemo(() => staff.filter((s) => s.role === 'salesman'), [staff]);
-  const now = new Date();
-
-  const rows = people.map((s) => {
-    const a = attendance.find((x) => x.staffId === s.id && x.date === day);
-    const state = dayState(d, s, day, now);
-    const openGap = !!a?.gaps.some((g) => !g.back); const onBreak = !!a?.breaks.some((b) => !b.e);
-    const status = a ? (a.out ? { t: 'Day ended', c: 'bg-paper text-steel' } : openGap ? { t: 'Stepped out of the shop', c: 'bg-blush-bg text-blush-fg' } : onBreak ? { t: 'On break', c: 'bg-butter-bg text-butter-fg' } : { t: day === today ? 'In the shop' : 'Present', c: 'bg-sage-bg text-sage-fg' }) : { t: STATE[state].label, c: STATE[state].chip };
-    return { s, a, state, status, live: !!a && !a.out && !openGap };
-  });
-  const count = (f: (r: (typeof rows)[number]) => boolean) => rows.filter(f).length;
-  const summary = [
-    { k: 'In the shop now', n: count((r) => r.live && day === today), c: 'bg-sage-bg text-sage-fg' },
-    { k: day === today ? 'Not in yet' : 'Absent', n: count((r) => (r.state === 'future' || r.state === 'absent') && !r.a), c: 'bg-butter-bg text-butter-fg' },
-    { k: 'On leave', n: count((r) => r.state === 'paid-leave' || r.state === 'unpaid-leave'), c: 'bg-sky-bg text-sky-fg' },
-    { k: 'Came late', n: count((r) => !!r.a && isLate(r.a, settings.lateAfter)), c: 'bg-blush-bg text-blush-fg' },
-  ];
   const stepDay = (by: number) => { const x = new Date(day + 'T12:00:00'); x.setDate(x.getDate() + by); const k = dk(x); if (k <= today) setDay(k); };
-
   return (
-    <div className="mx-auto max-w-[1380px]">
-      <Title title="Staff & Attendance" sub="Who is in the shop, who is on leave, and how each person's month is going. Salaries and leave decisions have their own pages.">
-        <Seg value={view} onChange={setView} options={[['day', 'Day'], ['month', 'Month'], ['team', 'Team & salary']]} />
-      </Title>
-
-      {view === 'day' && (
-        <>
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <button onClick={() => stepDay(-1)} className="rounded-xl border border-line bg-white p-2.5 hover:bg-paper" aria-label="Previous day"><ChevronLeft className="h-4 w-4" /></button>
-            <input type="date" max={today} value={day} onChange={(e) => e.target.value && setDay(e.target.value)} className="!rounded-xl" />
-            <button onClick={() => stepDay(1)} disabled={day >= today} className="rounded-xl border border-line bg-white p-2.5 hover:bg-paper disabled:opacity-40" aria-label="Next day"><ChevronRight className="h-4 w-4" /></button>
-            {day !== today && <button onClick={() => setDay(today)} className="rounded-xl bg-sage-bg px-3 py-2 text-sm font-medium text-sage-fg">Back to today</button>}
-            <span className="ml-1 text-sm text-steel">{DAY_NAMES[dayOfWeek(day)]}, {fmtDate(day)}{dayOfWeek(day) === settings.weeklyOff && ' · weekly off'}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {summary.map((c) => <div key={c.k} className={`rounded-[20px] p-4 ${c.c}`}><div className="text-sm font-medium opacity-80">{c.k}</div><div className="font-display text-[40px] font-semibold leading-none"><CountUp value={c.n} duration={700} /></div></div>)}
-          </div>
-
-          <div className="mt-5 grid gap-3 lg:grid-cols-2">
-            {rows.map(({ s, a, status }, n) => {
-              const end = a ? (a.out ? new Date(a.out).toISOString() : new Date().toISOString()) : '';
-              return (
-                <div key={s.id} className={`${card} fade-up p-4`} style={{ animationDelay: `${n * 40}ms` }}>
-                  <div className="flex items-center gap-3">
-                    <Avatar staff={staff} id={s.id} />
-                    <div className="min-w-0 flex-1"><div className="font-display text-lg font-semibold leading-5">{s.name}</div><div className="text-xs text-steel">{s.phone}</div></div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-medium ${status.c}`}>{status.t}</span>
-                  </div>
-                  {a ? (
-                    <>
-                      <div className="mt-4 grid grid-cols-4 gap-2 text-sm">
-                        <Fact k="In" v={fmtTime(a.in)} warn={isLate(a, settings.lateAfter)} />
-                        <Fact k="Out" v={a.out ? fmtTime(a.out) : '–'} />
-                        <Fact k="Worked" v={hm(workedMinutes(a))} />
-                        <Fact k="Breaks" v={`${breakMinutes(a)} min`} />
-                      </div>
-                      <div className="relative mt-4 h-3 rounded-full bg-paper" aria-label="Day timeline">
-                        <div className="absolute inset-y-0 rounded-full bg-sage-mid" style={{ left: `${pct(a.in, day)}%`, width: `${Math.max(1, pct(end, day) - pct(a.in, day))}%` }} />
-                        {a.breaks.map((b, i) => <div key={i} className="absolute inset-y-0 bg-butter-fg/50" style={{ left: `${pct(b.s, day)}%`, width: `${Math.max(1, pct(b.e ?? end, day) - pct(b.s, day))}%` }} title="Break" />)}
-                        {a.gaps.map((g, i) => <div key={i} className="absolute inset-y-0 bg-blush-fg/60" style={{ left: `${pct(g.out, day)}%`, width: `${Math.max(1, pct(g.back ?? end, day) - pct(g.out, day))}%` }} title="Left the shop" />)}
-                      </div>
-                      <div className="mt-1 flex justify-between text-[11px] text-steel"><span>8 am</span><span>12</span><span>4 pm</span><span>9 pm</span></div>
-                      {isLate(a, settings.lateAfter) && <p className="mt-2 text-xs text-butter-fg">Came after {settings.lateAfter}.</p>}
-                      {a.gaps.length > 0 && <p className="mt-1 text-xs text-blush-fg">Left the shop {a.gaps.length} time{a.gaps.length > 1 ? 's' : ''}: {a.gaps.map((g) => `${fmtTime(g.out)}${g.back ? ' to ' + fmtTime(g.back) : ' (not back)'}`).join(', ')}.</p>}
-                    </>
-                  ) : <p className="mt-3 text-sm text-steel">{leaveLine(d, s.id, day) ?? 'No clock-in recorded for this day.'}</p>}
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-4 px-1 text-xs text-steel"><Key c="bg-sage-mid" t="At work" /><Key c="bg-butter-fg/50" t="Break" /><Key c="bg-blush-fg/60" t="Left the shop" /></div>
-        </>
-      )}
-
-      {view === 'month' && <MonthGrid people={people} month={month} setMonth={setMonth} today={today} open={(k) => { setDay(k); setView('day'); }} />}
+    <div className="max-w-6xl">
+      <ScreenHead title="Staff and Attendance" hint="Who is in the shop, the month at a glance, and the salesman list. Salaries and leave decisions have their own screens." />
+      <div className="mb-3 flex gap-1 border-b border-line">{([['day', 'Day'], ['month', 'Month'], ['team', 'Staff list']] as const).map(([k, l]) => <button key={k} onClick={() => setView(k)} className={tab(view === k)}>{l}</button>)}</div>
+      {view === 'day' && <Day d={d} people={people} day={day} today={today} setDay={setDay} stepDay={stepDay} settings={settings} attendance={attendance} />}
+      {view === 'month' && <Month people={people} month={month} setMonth={setMonth} today={today} open={(k) => { setDay(k); setView('day'); }} />}
       {view === 'team' && <Team />}
     </div>
   );
 }
 
-const Fact = ({ k, v, warn }: { k: string; v: string; warn?: boolean }) => <div className="rounded-xl bg-paper px-3 py-2"><div className="text-[11px] text-steel">{k}</div><div className={`font-medium ${warn ? 'text-butter-fg' : ''}`}>{v}</div></div>;
-const Key = ({ c, t }: { c: string; t: string }) => <span className="flex items-center gap-1.5"><span className={`h-2.5 w-5 rounded-full ${c}`} />{t}</span>;
-function leaveLine(d: ReturnType<typeof useStore.getState>, sid: string, day: string) {
-  const l = d.leaves.find((x) => x.staffId === sid && x.status !== 'rejected' && day >= x.from && day <= x.to);
-  if (!l) return null;
-  return l.status === 'pending' ? `Asked for leave (${l.type}): "${l.reason}". Waiting for your decision.` : `${l.pay === 'unpaid' ? 'Unpaid' : 'Paid'} ${l.type.toLowerCase()} leave: "${l.reason}".`;
-}
-
-function MonthGrid({ people, month, setMonth, today, open }: { people: Staff[]; month: string; setMonth: (m: string) => void; today: string; open: (k: string) => void }) {
-  const d = useStore(); const keys = monthKeys(month); const cur = today.slice(0, 7);
-  const data = people.map((s) => {
-    const cells = keys.map((k) => ({ k, st: dayState(d, s, k) }));
-    const att = d.attendance.filter((a) => a.staffId === s.id && a.date.startsWith(month));
-    const n = (f: (x: DayState) => boolean) => cells.filter((c) => f(c.st)).length;
-    return { s, cells, present: att.length, late: n((x) => x === 'late'), absent: n((x) => x === 'absent'), leave: n((x) => x === 'paid-leave' || x === 'unpaid-leave'), mins: att.reduce((t, a) => t + workedMinutes(a), 0) };
+function Day({ d, people, day, today, setDay, stepDay, settings, attendance }: { d: ReturnType<typeof useStore.getState>; people: Staff[]; day: string; today: string; setDay: (k: string) => void; stepDay: (n: number) => void; settings: ReturnType<typeof useStore.getState>['settings']; attendance: ReturnType<typeof useStore.getState>['attendance'] }) {
+  const now = new Date();
+  const rows = people.map((s) => {
+    const a = attendance.find((x) => x.staffId === s.id && x.date === day); const state = dayState(d, s, day, now);
+    const gapOpen = !!a?.gaps.some((g) => !g.back); const brk = !!a?.breaks.some((b) => !b.e);
+    const status = a ? (a.out ? 'Day ended' : gapOpen ? 'Stepped out' : brk ? 'On break' : day === today ? 'In the shop' : 'Present') : STATE[state].label;
+    const l = d.leaves.find((x) => x.staffId === s.id && x.status !== 'rejected' && day >= x.from && day <= x.to);
+    return { s, a, status, note: a ? [isLate(a, settings.lateAfter) ? `Came after ${settings.lateAfter}` : '', a.gaps.length ? `Left the shop ${a.gaps.length}×: ${a.gaps.map((g) => `${fmtTime(g.out)}${g.back ? ' to ' + fmtTime(g.back) : ' (not back)'}`).join(', ')}` : ''].filter(Boolean).join('. ') : l ? `${l.status === 'pending' ? 'Asked for leave' : l.pay === 'unpaid' ? 'Unpaid leave' : 'Paid leave'}: ${l.reason}` : '' };
   });
-  const exportCsv = () => download(`attendance-${month}.csv`, toCsv([['Staff', 'Present', 'Late', 'Absent', 'Leave days', 'Hours worked'], ...data.map((r) => [r.s.name, r.present, r.late, r.absent, r.leave, (r.mins / 60).toFixed(1)])]));
+  const n = (f: (r: (typeof rows)[number]) => boolean) => rows.filter(f).length;
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <button onClick={() => setMonth(shiftMonth(month, -1))} className="rounded-xl border border-line bg-white p-2.5 hover:bg-paper" aria-label="Previous month"><ChevronLeft className="h-4 w-4" /></button>
-        <div className="min-w-40 text-center font-display text-xl font-semibold">{monthLabel(month)}</div>
-        <button onClick={() => setMonth(shiftMonth(month, 1))} disabled={month >= cur} className="rounded-xl border border-line bg-white p-2.5 hover:bg-paper disabled:opacity-40" aria-label="Next month"><ChevronRight className="h-4 w-4" /></button>
-        <button onClick={exportCsv} className="ml-auto flex items-center gap-2 rounded-xl border border-line bg-white px-4 py-2 text-sm font-medium hover:bg-paper"><Download className="h-4 w-4" />Export CSV</button>
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px]">
+        <button onClick={() => stepDay(-1)} aria-label="Previous day" className="rounded-md border border-line bg-white p-1.5 hover:bg-paper"><ChevronLeft className="h-4 w-4" /></button>
+        <input type="date" aria-label="Date" max={today} value={day} onChange={(e) => e.target.value && setDay(e.target.value)} className="!w-40 !rounded-md !px-2 !py-1" />
+        <button onClick={() => stepDay(1)} disabled={day >= today} aria-label="Next day" className="rounded-md border border-line bg-white p-1.5 hover:bg-paper disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+        {day !== today && <button onClick={() => setDay(today)} className="underline">Today</button>}
+        <span className="text-steel">{DAY_NAMES[dayOfWeek(day)]}, {fmtDate(day)}{dayOfWeek(day) === settings.weeklyOff && ' · weekly off'}</span>
+        <span className="ml-auto text-steel">{n((r) => !!r.a && !r.a.out)} in the shop · {n((r) => !r.a && r.status !== 'Weekly off' && r.status !== 'Paid leave' && r.status !== 'Unpaid leave')} not in · {n((r) => /leave/i.test(r.status))} on leave · {n((r) => !!r.a && isLate(r.a, settings.lateAfter))} late</span>
       </div>
-      <div className={`${card} overflow-x-auto p-4`}>
-        <table className="w-full min-w-[960px] border-separate border-spacing-y-1.5 text-center text-xs">
-          <thead><tr className="text-steel"><th className="w-36 text-left font-medium">Staff</th>{keys.map((k) => <th key={k} className="font-medium"><div>{k.slice(8)}</div><div className="text-[10px] opacity-60">{DAY_NAMES[dayOfWeek(k)][0]}</div></th>)}
-            {['Present', 'Late', 'Absent', 'Leave', 'Hours'].map((h) => <th key={h} className="pl-2 text-right font-medium">{h}</th>)}</tr></thead>
+      <DataGrid csvName={`attendance-${day}`} rows={rows} rowKey={(r) => r.s.id} primary={false} empty="No salesmen yet"
+        cols={[
+          { h: 'Staff', v: (r) => <span className="font-medium">{r.s.name}</span>, csv: (r) => r.s.name, sort: (r) => r.s.name },
+          { h: 'Status', v: (r) => r.status, csv: (r) => r.status, sort: (r) => r.status },
+          { h: 'In', v: (r) => (r.a ? <span className={isLate(r.a, settings.lateAfter) ? 'font-semibold text-butter-fg' : ''}>{fmtTime(r.a.in)}</span> : ''), csv: (r) => (r.a ? fmtTime(r.a.in) : '') },
+          { h: 'Out', v: (r) => (r.a?.out ? fmtTime(r.a.out) : ''), csv: (r) => (r.a?.out ? fmtTime(r.a.out) : '') },
+          { h: 'Worked', right: true, v: (r) => (r.a ? hm(workedMinutes(r.a)) : ''), csv: (r) => (r.a ? workedMinutes(r.a) : ''), sort: (r) => (r.a ? workedMinutes(r.a) : 0) },
+          { h: 'Breaks', right: true, v: (r) => (r.a ? `${breakMinutes(r.a)} min` : ''), csv: (r) => (r.a ? breakMinutes(r.a) : '') },
+          { h: 'Note', v: (r) => <span className="text-[12.5px] text-steel">{r.note}</span>, csv: (r) => r.note },
+        ]} />
+    </>
+  );
+}
+
+function Month({ people, month, setMonth, today, open }: { people: Staff[]; month: string; setMonth: (m: string) => void; today: string; open: (k: string) => void }) {
+  const d = useStore(); const keys = monthKeys(month); const cur = today.slice(0, 7);
+  const data = people.map((s) => {
+    const cells = keys.map((k) => ({ k, st: dayState(d, s, k) })); const att = d.attendance.filter((a) => a.staffId === s.id && a.date.startsWith(month));
+    const c = (f: (x: DayState) => boolean) => cells.filter((x) => f(x.st)).length;
+    return { s, cells, present: att.length, late: c((x) => x === 'late'), absent: c((x) => x === 'absent'), leave: c((x) => x === 'paid-leave' || x === 'unpaid-leave'), mins: att.reduce((t, a) => t + workedMinutes(a), 0) };
+  });
+  const exp = () => download(`attendance-${month}.csv`, toCsv([['Staff', 'Present', 'Late', 'Absent', 'Leave days', 'Hours worked'], ...data.map((r) => [r.s.name, r.present, r.late, r.absent, r.leave, (r.mins / 60).toFixed(1)])]));
+  return (
+    <>
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px]">
+        <button onClick={() => setMonth(shiftMonth(month, -1))} aria-label="Previous month" className="rounded-md border border-line bg-white p-1.5 hover:bg-paper"><ChevronLeft className="h-4 w-4" /></button>
+        <b className="min-w-36 text-center">{monthLabel(month)}</b>
+        <button onClick={() => setMonth(shiftMonth(month, 1))} disabled={month >= cur} aria-label="Next month" className="rounded-md border border-line bg-white p-1.5 hover:bg-paper disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+        <KBtn onClick={exp} className="ml-auto">Export CSV</KBtn>
+      </div>
+      <div className="overflow-x-auto rounded-md border border-line bg-white">
+        <table className="w-full min-w-[900px] border-collapse text-center text-[12px]">
+          <thead className="bg-paper"><tr className="border-b border-line"><th className={th + ' w-36 text-left'}>Staff</th>{keys.map((k) => <th key={k} className="px-0 py-1 font-medium text-steel"><div>{k.slice(8)}</div><div className="text-[10px] opacity-60">{DAY_NAMES[dayOfWeek(k)][0]}</div></th>)}{['Present', 'Late', 'Absent', 'Leave', 'Hours'].map((h) => <th key={h} className={th + ' text-right'}>{h}</th>)}</tr></thead>
           <tbody>{data.map((r) => (
-            <tr key={r.s.id}>
-              <td className="text-left"><div className="flex items-center gap-2"><Avatar staff={d.staff} id={r.s.id} size="sm" /><span className="text-sm font-medium">{r.s.name}</span></div></td>
-              {r.cells.map(({ k, st }) => <td key={k} className="p-0.5"><button onClick={() => open(k)} title={`${fmtDate(k)}: ${STATE[st].label}`} className={`h-7 w-full min-w-6 rounded-lg text-[11px] font-semibold ${STATE[st].cell}`}>{STATE[st].code}</button></td>)}
-              <td className="pl-2 text-right text-sm font-medium">{r.present}</td><td className="text-right text-sm text-butter-fg">{r.late || '–'}</td><td className="text-right text-sm text-blush-fg">{r.absent || '–'}</td><td className="text-right text-sm text-sky-fg">{r.leave || '–'}</td><td className="text-right text-sm">{Math.round(r.mins / 60)}h</td>
+            <tr key={r.s.id} className="border-b border-line/70">
+              <td className="px-2.5 py-1 text-left text-[13px] font-medium">{r.s.name}</td>
+              {r.cells.map(({ k, st }) => <td key={k} className="p-0"><button onClick={() => open(k)} title={`${fmtDate(k)}: ${STATE[st].label}`} className={`h-6 w-full min-w-5 text-[11px] ${STATE[st].cls}`}>{STATE[st].code}</button></td>)}
+              <td className="px-2.5 text-right tabular-nums">{r.present}</td><td className="px-2.5 text-right tabular-nums">{r.late || '-'}</td><td className="px-2.5 text-right tabular-nums">{r.absent || '-'}</td><td className="px-2.5 text-right tabular-nums">{r.leave || '-'}</td><td className="px-2.5 text-right tabular-nums">{Math.round(r.mins / 60)}h</td>
             </tr>))}</tbody>
         </table>
       </div>
-      <div className="mt-3 flex flex-wrap gap-2 px-1 text-xs">
-        {(['present', 'late', 'paid-leave', 'unpaid-leave', 'pending-leave', 'absent', 'off'] as DayState[]).map((k) => <span key={k} className={`rounded-full px-2.5 py-1 ${STATE[k].chip}`}>{k === 'late' ? 'P = present (amber if late)' : `${STATE[k].code} = ${STATE[k].label}`}</span>)}
-      </div>
-      <p className="mt-2 px-1 text-xs text-steel">Tap any day to open it. A working day with no clock-in and no approved leave counts as absent and is deducted in payroll.</p>
+      <p className="mt-2 text-[12px] text-steel">P present (shaded if late) · A absent · PL paid leave · UL unpaid leave · ? leave awaiting decision · - weekly off. Click a day to open it. A working day with no clock-in and no approved leave counts as absent and is deducted in payroll.</p>
     </>
   );
 }
 
 function Team() {
   const { staff, addStaff, updateStaff } = useStore(); const people = staff.filter((s) => s.role === 'salesman');
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null); const [edit, setEdit] = useState<string | null>(null);
-  const [f, setF] = useState({ name: '', phone: '', salary: '' }); const [e, setE] = useState({ name: '', phone: '', salary: '' });
-  const run = (fn: () => void, ok: string) => { try { fn(); setMsg({ ok: true, text: ok }); return true; } catch (x) { setMsg({ ok: false, text: errText(x) }); return false; } };
+  const [editId, setEditId] = useState<string | null>(null); const [f, setF] = useState({ name: '', phone: '', salary: '' }); const [err, setErr] = useState('');
+  const open = (s?: Staff) => { setEditId(s ? s.id : 'new'); setF(s ? { name: s.name, phone: s.phone, salary: String(s.salary) } : { name: '', phone: '', salary: '' }); setErr(''); };
+  const save = () => {
+    try { if (editId === 'new') { addStaff(f.name, f.phone, +f.salary); toast(`${f.name} added`); } else if (editId) { updateStaff(editId, { name: f.name, phone: f.phone, salary: +f.salary }); toast('Saved'); } setEditId(null); setErr(''); }
+    catch (e) { setErr(errText(e)); }
+  };
+  useScreenKeys(editId ? [{ key: 'F2', label: 'Save', run: save }, { key: 'Esc', label: 'Cancel', run: () => setEditId(null), typing: true }] : [{ key: 'N', label: 'New salesman', run: () => open() }]);
   const total = people.reduce((a, s) => a + s.salary, 0);
   return (
     <>
-      <Banner msg={msg} onClose={() => setMsg(null)} />
-      <div className="mb-4 flex flex-wrap items-center gap-6 rounded-[22px] bg-sage-bg px-6 py-5 text-sage-fg">
-        <div><div className="text-sm opacity-80">Monthly salary bill</div><div className="font-display text-4xl font-semibold"><Rupee v={total} animate /></div></div>
-        <div><div className="text-sm opacity-80">People</div><div className="font-display text-4xl font-semibold"><CountUp value={people.length} duration={600} /></div></div>
-        <p className="max-w-sm text-sm opacity-80">This is the full monthly salary before leave and absence deductions. Open Payroll to see what each person actually earns this month.</p>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {people.map((s) => edit === s.id ? (
-          <div key={s.id} className={`${card} space-y-2 p-4`}>
-            <input className="w-full" aria-label="Name" value={e.name} onChange={(x) => setE({ ...e, name: x.target.value })} />
-            <input className="w-full" aria-label="Phone" value={e.phone} onChange={(x) => setE({ ...e, phone: x.target.value })} />
-            <input className="w-full" aria-label="Monthly salary" type="number" value={e.salary} onChange={(x) => setE({ ...e, salary: x.target.value })} />
-            <p className="text-xs text-steel">A new salary applies to months not yet paid. Paid months keep their old figures.</p>
-            <div className="flex gap-2"><button className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white" onClick={() => run(() => updateStaff(s.id, { name: e.name, phone: e.phone, salary: +e.salary }), 'Saved') && setEdit(null)}>Save</button><button className="rounded-xl border border-line px-4 py-2 text-sm" onClick={() => setEdit(null)}>Cancel</button></div>
-          </div>
-        ) : (
-          <div key={s.id} className={`${card} flex items-center gap-3 p-4`}>
-            <Avatar staff={staff} id={s.id} size="lg" />
-            <div className="min-w-0 flex-1"><div className="font-display text-lg font-semibold leading-5">{s.name}</div><div className="text-xs text-steel">{s.phone}{s.joined && ` · joined ${fmtDate(s.joined)}`}</div><div className="mt-1 font-display text-xl font-semibold text-brand">{money(s.salary)}<span className="font-sans text-xs font-normal text-steel"> / month</span></div></div>
-            <button aria-label={`Edit ${s.name}`} onClick={() => { setEdit(s.id); setE({ name: s.name, phone: s.phone, salary: String(s.salary) }); }} className="rounded-xl p-2 text-steel hover:bg-paper"><Pencil className="h-4 w-4" /></button>
-          </div>
-        ))}
-      </div>
-      <div className={`${card} mt-5 max-w-3xl p-5`}>
-        <div className="mb-3 flex items-center gap-2 font-display text-lg font-semibold"><UserPlus className="h-5 w-5 text-brand" />Add a salesman</div>
-        <div className="grid gap-2 sm:grid-cols-4">
-          <input placeholder="Name" value={f.name} onChange={(x) => setF({ ...f, name: x.target.value })} /><input placeholder="Phone" value={f.phone} onChange={(x) => setF({ ...f, phone: x.target.value })} />
-          <input placeholder="Monthly salary" type="number" value={f.salary} onChange={(x) => setF({ ...f, salary: x.target.value })} />
-          <button className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white" onClick={() => run(() => addStaff(f.name, f.phone, +f.salary), `${f.name} added`) && setF({ name: '', phone: '', salary: '' })}>Add</button>
-        </div>
-      </div>
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px]"><span className="text-steel">{people.length} salesmen · monthly salary bill {money(total)} before leave and absence deductions</span><KBtn className="ml-auto" onClick={() => open()} k="N">New salesman</KBtn></div>
+      {editId && (
+        <div className="mb-3 max-w-xl"><Panel title={editId === 'new' ? 'New salesman' : 'Edit salesman'} hint="A new salary applies to months not yet paid">
+          <Field label="Name"><input autoFocus aria-label="Name" className="w-full !rounded-md !px-2.5 !py-1 text-[13px]" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+          <Field label="Phone"><input aria-label="Phone" className="w-full !rounded-md !px-2.5 !py-1 text-[13px]" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></Field>
+          <Field label="Monthly salary"><input aria-label="Monthly salary" type="number" min={0} className="!w-40 !rounded-md !px-2.5 !py-1 text-[13px]" value={f.salary} onChange={(e) => setF({ ...f, salary: e.target.value })} /></Field>
+          {err && <p className="my-1.5 rounded bg-blush-bg px-3 py-1.5 text-[12.5px] text-blush-fg">{err}</p>}
+          <div className="flex gap-2 py-2"><KBtn primary k="F2" onClick={save}>Save</KBtn><KBtn onClick={() => setEditId(null)} k="Esc">Cancel</KBtn></div>
+        </Panel></div>
+      )}
+      <DataGrid csvName="salesmen" rows={people} rowKey={(s) => s.id} onOpen={(s) => open(s)} openOnClick primary={!editId} empty="No salesmen yet. Press N to add one."
+        cols={[
+          { h: 'Name', v: (s) => <span className="font-medium">{s.name}</span>, csv: (s) => s.name, sort: (s) => s.name },
+          { h: 'Phone', v: (s) => <span className="font-mono text-[12.5px]">{s.phone}</span>, csv: (s) => s.phone },
+          { h: 'Joined', v: (s) => (s.joined ? fmtDate(s.joined) : ''), csv: (s) => s.joined ?? '', sort: (s) => s.joined ?? '' },
+          { h: 'Monthly salary', right: true, v: (s) => money(s.salary), csv: (s) => s.salary, sort: (s) => s.salary },
+        ]} />
     </>
   );
 }

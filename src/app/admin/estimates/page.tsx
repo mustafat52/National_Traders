@@ -1,57 +1,60 @@
 'use client';
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useStore, useProductMap } from '@/lib/store';
 import { fmtDate, isExpiredEstimate, money } from '@/lib/rules';
 import { TIER_NAMES } from '@/lib/types';
 import { timeAgo } from '@/lib/time';
-import { Avatar, Seg, Title } from '@/components/StaffBits';
-import { Kpi, Pill } from '@/components/ReportBits';
+import { useScreenKeys } from '@/lib/hotkeys';
+import { DataGrid } from '@/components/grid/DataGrid';
+import { ScreenHead } from '@/components/grid/Screen';
 
 type F = 'open' | 'soon' | 'expired' | 'converted' | 'all';
+const cls = 'rounded-md border border-line bg-white px-2 py-1.5 text-[13px]';
+
+/** Estimate / Quotation: every estimate the salesmen have made. Open one to review it and turn it into a sale. */
 export default function Estimates() {
-  const d = useStore(); const pm = useProductMap(); const [f, setF] = useState<F>('open'); const [who, setWho] = useState('all'); const [q, setQ] = useState('');
+  const d = useStore(); const pm = useProductMap(); const router = useRouter(); const [f, setF] = useState<F>('open'); const [who, setWho] = useState('all'); const [q, setQ] = useState('');
   const now = Date.now(); const thisMonth = new Date().toISOString().slice(0, 7);
   const all = useMemo(() => d.bills.filter((b) => b.kind === 'estimate').map((b) => {
     const changed = b.lines.filter((l) => (pm.get(l.pid)?.prices[b.tier] ?? l.price) !== l.price).length;
-    const exp = isExpiredEstimate(b); const left = b.validUntil ? new Date(b.validUntil).getTime() - now : 0;
-    return { b, changed, exp, soon: b.status === 'open' && !exp && left < 2 * 86400000, phone: d.customers.find((c) => c.id === b.customerId)?.phone ?? '' };
-  }), [d.bills, d.customers, pm]); // eslint-disable-line react-hooks/exhaustive-deps
-  const open = all.filter((x) => x.b.status === 'open'); const conv = all.filter((x) => x.b.status === 'converted');
+    const exp = isExpiredEstimate(b); const left = b.validUntil ? new Date(b.validUntil).getTime() - now : 0; const cu = d.customers.find((c) => c.id === b.customerId);
+    const state = b.status === 'converted' ? 'Converted' : exp ? 'Expired' : b.status === 'open' && left < 2 * 86400000 ? 'Expires soon' : 'Open';
+    return { b, changed, exp, soon: b.status === 'open' && !exp && left < 2 * 86400000, phone: cu?.phone ?? '', cname: cu?.name ?? '', state, by: d.staff.find((s) => s.id === b.staffId)?.name ?? '' };
+  }), [d.bills, d.customers, d.staff, pm]); // eslint-disable-line react-hooks/exhaustive-deps
+  const open = all.filter((x) => x.b.status === 'open'); const convMonth = d.bills.filter((b) => b.kind === 'quotation' && b.fromEstimate && b.date.startsWith(thisMonth));
   const list = all.filter((x) => (f === 'all' || (f === 'open' ? x.b.status === 'open' : f === 'soon' ? x.soon : f === 'expired' ? x.exp : x.b.status === 'converted'))
-    && (who === 'all' || x.b.staffId === who) && (!q || x.b.no.toLowerCase().includes(q.toLowerCase()) || x.phone.includes(q)));
-  const convMonth = d.bills.filter((b) => b.kind === 'quotation' && b.fromEstimate && b.date.startsWith(thisMonth));
+    && (who === 'all' || x.b.staffId === who) && (!q || x.b.no.toLowerCase().includes(q.toLowerCase()) || x.phone.includes(q) || x.cname.toLowerCase().includes(q.toLowerCase())));
+  useScreenKeys([{ key: '/', label: 'Search', run: () => document.getElementById('est-q')?.focus() }]);
+  const tile = (k: F, label: string, n: number, sub: string, tone = '') => (
+    <button key={k} onClick={() => setF(k)} aria-pressed={f === k} className={`min-w-[130px] rounded-md border px-3 py-1.5 text-left transition ${f === k ? 'border-gold bg-sage-bg/60' : 'border-line bg-white hover:bg-paper'}`}>
+      <div className={`text-[20px] font-semibold leading-tight tabular-nums ${tone}`}>{n}</div><div className="text-[11.5px] text-steel">{label}{sub ? ` · ${sub}` : ''}</div></button>);
+
   return (
-    <div className="mx-auto max-w-[1100px]">
-      <Title title="Estimates" sub="Salesmen make estimates; only you turn them into sales. Open one to see when it was made, which prices have changed since, and what price to keep." />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Waiting for you" value={open.length} kind="num" tone="butter" sub={money(open.reduce((t, x) => t + x.b.total, 0)) + ' quoted'} />
-        <Kpi label="With changed prices" value={open.filter((x) => x.changed).length} kind="num" tone="blush" sub="check before converting" />
-        <Kpi label="Expiring in 2 days" value={all.filter((x) => x.soon).length} kind="num" tone="lilac" />
-        <Kpi label="Converted this month" value={convMonth.length} kind="num" tone="sage" sub={money(convMonth.reduce((t, b) => t + b.total, 0)) + ' sold'} />
+    <div>
+      <ScreenHead title="Estimate / Quotation" hint="Salesmen make estimates; only you turn them into sales. Click a row, or press Enter, to review it.">
+        <input id="est-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Number, phone or name   ( / )" className="!w-60 !rounded-md !px-2.5 !py-1.5 text-[13px]" />
+      </ScreenHead>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {tile('open', 'Waiting for you', open.length, money(open.reduce((t, x) => t + x.b.total, 0)))}
+        {tile('soon', 'Expiring in 2 days', all.filter((x) => x.soon).length, '', all.some((x) => x.soon) ? 'text-butter-fg' : '')}
+        {tile('expired', 'Expired', all.filter((x) => x.exp).length, '')}
+        {tile('converted', 'Converted', all.filter((x) => x.b.status === 'converted').length, `${convMonth.length} this month`)}
+        {tile('all', 'All', all.length, '')}
+        <div className="ml-auto"><select value={who} onChange={(e) => setWho(e.target.value)} className={cls} aria-label="Salesman"><option value="all">Every salesman</option>{d.staff.filter((s) => s.role === 'salesman').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
       </div>
-      <div className="mb-4 mt-5 flex flex-wrap items-center gap-2">
-        <Seg value={f} onChange={setF} options={[['open', 'Open'], ['soon', 'Expiring'], ['expired', 'Expired'], ['converted', 'Converted'], ['all', 'All']]} />
-        <select value={who} onChange={(e) => setWho(e.target.value)} className="!rounded-xl" aria-label="Salesman"><option value="all">Every salesman</option>{d.staff.filter((s) => s.role === 'salesman').map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Estimate number or phone" className="!rounded-xl" />
-      </div>
-      <div className="space-y-3">
-        {list.slice(0, 40).map(({ b, changed, exp, soon, phone }) => (
-          <div key={b.id} className="flex flex-wrap items-center gap-4 rounded-[22px] border border-line bg-white p-4">
-            <Avatar staff={d.staff} id={b.staffId} />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2"><span className="font-display text-lg font-semibold">{b.no}</span>
-                {b.status === 'converted' ? <Pill tone="sky">Converted</Pill> : exp ? <Pill tone="blush">Expired {fmtDate(b.validUntil!)}</Pill> : soon ? <Pill tone="butter">Expires soon</Pill> : <Pill tone="sage">Open</Pill>}
-                {b.status === 'open' && changed > 0 && <Pill tone="butter">{changed} price{changed > 1 ? 's' : ''} changed</Pill>}</div>
-              <div className="text-sm text-steel">By {d.staff.find((s) => s.id === b.staffId)?.name} · made {timeAgo(b.date)} ({fmtDate(b.date)}) · {phone} · {TIER_NAMES[b.tier]} · {b.lines.length} item{b.lines.length > 1 ? 's' : ''}</div>
-            </div>
-            <div className="text-right"><div className="font-display text-xl font-semibold">{money(b.total)}</div><div className="text-xs text-steel">as quoted</div></div>
-            {b.status === 'open' ? <Link href={`/admin/estimates/${b.id}`} className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-light">Review & convert</Link>
-              : <span className="w-36 text-center text-xs text-steel">{b.status === 'converted' ? 'Became a sale' : ''}</span>}
-          </div>))}
-        {!list.length && <div className="rounded-[22px] border-2 border-dashed border-line px-6 py-14 text-center"><div className="mb-2 text-4xl">🗂️</div><div className="font-display text-lg font-semibold">No estimates here</div><p className="text-sm text-steel">Try another filter.</p></div>}
-        {list.length > 40 && <p className="px-1 text-xs text-steel">Showing the first 40 of {list.length}. Use search to narrow down.</p>}
-      </div>
+      <DataGrid csvName="estimates" rows={list} rowKey={(x) => x.b.id} onOpen={(x) => router.push(`/admin/estimates/${x.b.id}`)} openOnClick maxH="calc(100vh - 250px)" empty="No estimates here. Try another tab."
+        cols={[
+          { h: 'Date', w: '110px', v: (x) => <span title={fmtDate(x.b.date)}>{timeAgo(x.b.date)}</span>, csv: (x) => fmtDate(x.b.date), sort: (x) => x.b.date },
+          { h: 'Estimate no', w: '130px', v: (x) => <span className="font-mono text-[12.5px] font-semibold">{x.b.no}</span>, csv: (x) => x.b.no, sort: (x) => x.b.no },
+          { h: 'Customer', v: (x) => <span>{x.cname || x.phone || '—'}{x.cname && x.phone ? <span className="ml-2 text-[12px] text-steel">{x.phone}</span> : null}</span>, csv: (x) => x.cname + ' ' + x.phone, sort: (x) => x.cname || x.phone },
+          { h: 'Salesman', v: (x) => x.by, csv: (x) => x.by, sort: (x) => x.by },
+          { h: 'Price list', v: (x) => TIER_NAMES[x.b.tier], csv: (x) => TIER_NAMES[x.b.tier], sort: (x) => x.b.tier },
+          { h: 'Items', right: true, v: (x) => x.b.lines.length, csv: (x) => x.b.lines.length, sort: (x) => x.b.lines.length },
+          { h: 'Amount', right: true, v: (x) => <span className="font-medium">{money(x.b.total)}</span>, csv: (x) => x.b.total, sort: (x) => x.b.total },
+          { h: 'Valid until', v: (x) => (x.b.validUntil ? fmtDate(x.b.validUntil) : '—'), csv: (x) => (x.b.validUntil ? fmtDate(x.b.validUntil) : ''), sort: (x) => x.b.validUntil ?? '' },
+          { h: 'Status', v: (x) => <span className={x.state === 'Open' ? 'text-good' : x.state === 'Converted' ? 'text-steel' : x.state === 'Expired' ? 'text-blush-fg' : 'text-butter-fg'}>{x.state}{x.b.status === 'open' && x.changed > 0 ? <span className="ml-2 rounded bg-butter-bg px-1.5 py-0.5 text-[11px] font-medium text-butter-fg">{x.changed} price{x.changed > 1 ? 's' : ''} changed</span> : null}</span>, csv: (x) => x.state, sort: (x) => x.state },
+        ]} />
     </div>
   );
 }

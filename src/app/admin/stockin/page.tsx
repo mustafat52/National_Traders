@@ -1,14 +1,16 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { X } from 'lucide-react';
 import { useStore, useProductMap } from '@/lib/store';
 import { LOCS, Product, StockIn as StockInRec } from '@/lib/types';
-import { fmtDate, money } from '@/lib/rules';
+import { fmtDate, money, pad } from '@/lib/rules';
 import { vendorBalance } from '@/lib/selectors';
 import { useScreenKeys } from '@/lib/hotkeys';
 import { Combobox } from '@/components/grid/Combobox';
 import { DataGrid } from '@/components/grid/DataGrid';
 import { Dialog } from '@/components/grid/Dialog';
+import { Field, Panel } from '@/components/grid/Panel';
 import { KBtn, ScreenHead } from '@/components/grid/Screen';
 import { toast } from '@/components/grid/Toast';
 
@@ -56,17 +58,28 @@ export default function StockIn() {
     }, 0);
   };
   const latest = useRef(lines); latest.current = lines;
-  useScreenKeys([{ key: 'F9', label: 'Save delivery', run: save }, { key: 'Ctrl+S', label: '', run: save, hidden: true }, { key: 'Ctrl+Delete', label: 'Remove row', run: () => {}, hidden: true }]);
+  useScreenKeys([{ key: 'F2', label: 'Save delivery', run: save }, { key: 'F9', label: '', run: save, hidden: true }, { key: 'Ctrl+S', label: '', run: save, hidden: true }, { key: 'Ctrl+Delete', label: 'Remove row', run: () => {}, hidden: true }]);
 
   return (
     <div>
-      <ScreenHead title="Stock In" hint="The only place stock is added. Search or scan an item, type the quantity for each place. In a quantity cell, 3d means 3 Dozen, 2b means 2 Box."><KBtn primary k="F9" onClick={save} disabled={units <= 0}>Save delivery</KBtn></ScreenHead>
-      <div className="mb-3 flex flex-wrap items-end gap-3 rounded-md border border-line bg-white p-3 text-[13px]">
-        <label className="block"><span className="mb-0.5 block text-[11px] font-semibold uppercase text-steel">Came from</span><select className={sel} value={vendorMode ? 'v' : 'n'} onChange={(e) => setVendorMode(e.target.value === 'v')}><option value="v">A vendor (with bill)</option><option value="n">No vendor bill</option></select></label>
-        {vendorMode && <><label className="block"><span className="mb-0.5 block text-[11px] font-semibold uppercase text-steel">Vendor</span><select className={sel} value={vendorId} onChange={(e) => setVendorId(e.target.value)}><option value="">Choose…</option>{vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
-          <label className="block"><span className="mb-0.5 block text-[11px] font-semibold uppercase text-steel">Vendor bill no.</span><input className="!w-40 !rounded-md !px-2.5 !py-1.5" value={billNo} onChange={(e) => setBillNo(e.target.value)} /></label></>}
-        <label className="block min-w-[200px] flex-1"><span className="mb-0.5 block text-[11px] font-semibold uppercase text-steel">Note</span><input className="w-full !rounded-md !px-2.5 !py-1.5" value={note} onChange={(e) => setNote(e.target.value)} placeholder={vendorMode ? 'Truck number, who received it' : 'Where did it come from?'} /></label>
-        {vendor && <span className="text-[12.5px] text-steel">{owed < 0 ? `Advance held: ${money(-owed)}` : `You owe ${vendor.name}: `}{owed >= 0 && <b className="text-ink">{money(owed)}</b>}</span>}
+      <ScreenHead title="Stock In (Purchase)" hint="The only place stock is added. Search or scan an item and type the quantity for each place. In a quantity cell, 3d means 3 Dozen, 2b means 2 Box."><KBtn primary k="F2" onClick={save} disabled={units <= 0}>Save delivery</KBtn></ScreenHead>
+      <div className="mb-3 grid gap-3 lg:grid-cols-2">
+        <Panel title="Voucher">
+          <Field label="Voucher type"><select id="si-type" aria-label="Came from" className={sel} value={vendorMode ? 'v' : 'n'} onChange={(e) => setVendorMode(e.target.value === 'v')}><option value="v">Purchase: stock with a vendor bill</option><option value="n">Stock in: no vendor bill</option></select></Field>
+          <Field label="Voucher no"><span className="font-mono font-semibold">SIN-{pad(d.counters.sin)}</span> <span className="text-[11.5px] text-steel">given when you save</span></Field>
+          <Field label="Date">{fmtDate(new Date().toISOString())} <span className="text-[11.5px] text-steel">today</span></Field>
+          <Field label="Note"><input className="w-full !rounded-md !px-2.5 !py-1 text-[13px]" aria-label="Note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={vendorMode ? 'Truck number, who received it' : 'Where did it come from?'} /></Field>
+        </Panel>
+        {vendorMode ? (
+          <Panel title="Vendor">
+            <Field label="Vendor"><span className="flex items-center gap-2"><select className={sel + ' min-w-[200px] flex-1'} aria-label="Vendor" value={vendorId} onChange={(e) => setVendorId(e.target.value)}><option value="">Choose…</option>{vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}</select><Link href="/admin/vendors" className="whitespace-nowrap text-[12.5px] underline">{vendors.length ? 'Vendors' : 'Add a vendor'}</Link></span></Field>
+            <Field label="Vendor bill no"><input className="!w-44 !rounded-md !px-2.5 !py-1 text-[13px]" aria-label="Vendor bill no" value={billNo} onChange={(e) => setBillNo(e.target.value)} /></Field>
+            <Field label="Balance">{vendor ? (owed < 0 ? <>Advance held: <b>{money(-owed)}</b></> : <>You owe {vendor.name}: <b>{money(owed)}</b></>) : <span className="text-steel">Choose a vendor</span>}</Field>
+            <Field label="Bill total"><b className="text-[15px] tabular-nums">{money(billTotal)}</b> <span className="text-[11.5px] text-steel">{vendor ? 'added to what you owe on save' : ''}</span></Field>
+          </Panel>
+        ) : (
+          <Panel title="Stock in without a vendor bill"><p className="py-2 text-[12.5px] text-steel">Use this for opening stock, godown receipts or stock you found. It only raises stock and records no purchase price or amount owed.</p></Panel>
+        )}
       </div>
       {err && <p className="mb-2 rounded bg-blush-bg px-3 py-1.5 text-[13px] text-blush-fg">{err}</p>}
       <div className="overflow-auto rounded-md border border-line bg-white">
@@ -88,7 +101,7 @@ export default function StockIn() {
           <tfoot className="border-t-2 border-line bg-paper text-[13px]"><tr><td /><td className="px-2.5 py-1.5 font-semibold">{lines.length} {lines.length === 1 ? 'item' : 'items'}</td>{LOCS.map((n, k) => <td key={n} className="px-2 py-1.5 text-right tabular-nums">{lines.reduce((a, l) => a + l.qty[k], 0)}</td>)}<td className="px-2.5 py-1.5 text-right font-bold tabular-nums">{units}</td>{vendorMode && <><td /><td className="px-2.5 py-1.5 text-right font-bold tabular-nums">{money(billTotal)}</td></>}<td /></tr></tfoot>
         </table>
       </div>
-      <p className="mt-1.5 text-[12px] text-steel">Enter = next cell · ↑ ↓ = other row · Ctrl+Delete = remove row · F9 = save. Stock is added only when you save.</p>
+      <p className="mt-1.5 text-[12px] text-steel">Enter = next cell · ↑ ↓ = other row · Ctrl+Delete = remove row · F2 = save. Stock is added only when you save.</p>
 
       <h2 className="mb-1.5 mt-6 text-[14px] font-semibold">Recent deliveries</h2>
       <DataGrid csvName="stock-in-history" rows={stockIns} rowKey={(r) => r.id} pageSize={10} primary={false} onOpen={setView} empty="No deliveries recorded yet"

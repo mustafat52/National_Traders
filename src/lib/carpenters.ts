@@ -14,7 +14,7 @@ export function carpRows(d: Pick<Data, 'carpenters' | 'bills' | 'returns' | 'car
   return d.carpenters.map((c) => {
     const mine = d.bills.filter((b) => b.referredBy === c.id);
     const paidBills = mine.filter((b) => b.kind === 'quotation');
-    const base = paidBills.reduce((a, b) => a + Math.max(0, b.total - (returned.get(b.id) ?? 0)), 0);
+    const base = paidBills.reduce((a, b) => a + Math.max(0, b.total - (b.transport ?? 0) - (returned.get(b.id) ?? 0)), 0);
     const jobs = d.bills.filter((b) => b.job?.carpenterId === c.id);
     const doneFees = jobs.filter((b) => b.job!.status === 'done').reduce((a, b) => a + b.job!.fee, 0);
     const paid = d.carpPayouts.filter((p) => p.carpenterId === c.id).reduce((a, p) => a + p.amount, 0);

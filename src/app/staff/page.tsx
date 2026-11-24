@@ -21,7 +21,7 @@ export default function Counter() {
     const s = useStore.getState(); const list = s.drafts.filter((x) => x.staffId === me);
     if (!list.length) s.newDraft(); else if (!list.some((x) => x.id === s.activeDraft)) s.setActiveDraft(list[0].id);
   }, [mine.length, d.activeDraft, me]);
-  const totalOf = (x: Draft) => roundBill(x.lines.reduce((t, l) => t + l.qty * (pm.get(l.pid)?.prices[x.tier ?? d.customers.find((c) => c.phone === x.phone)?.tier ?? 0] ?? 0), 0));
+  const totalOf = (x: Draft) => roundBill(x.lines.reduce((t, l) => t + l.qty * (pm.get(l.pid)?.prices[x.tier ?? d.customers.find((c) => c.phone === x.phone)?.tier ?? 0] ?? 0), 0) + (x.transport ? d.settings.transport ?? 0 : 0));
   return (
     <div className="space-y-3">
       <button onClick={() => { setBad(''); setScanning(true); }} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-black py-3.5 text-[15px] font-semibold text-white"><ScanLine className="h-5 w-5" />Scan a product QR</button>
@@ -53,7 +53,8 @@ function Bill({ draft, pm }: { draft: Draft; pm: Map<string, Product> }) {
   const valid = /^\d{10}$/.test(draft.phone); const cust = valid ? d.customers.find((c) => c.phone === draft.phone) : undefined;
   const t = draft.tier ?? cust?.tier ?? null; const ready = valid && t !== null;
   const price = (pid: string) => pm.get(pid)!.prices[t ?? 0]; const lines = draft.lines;
-  const total = lines.reduce((a, l) => a + l.qty * price(l.pid), 0);
+  const trCharge = draft.transport ? Math.round(d.settings.transport ?? 0) : 0; const goods = lines.reduce((a, l) => a + l.qty * price(l.pid), 0);
+  const total = goods + trCharge;
   const patch = (p: Partial<Draft>) => d.patchDraft(draft.id, p);
   const setLines = (ls: Draft['lines']) => patch({ lines: ls });
 
@@ -73,7 +74,7 @@ function Bill({ draft, pm }: { draft: Draft; pm: Map<string, Product> }) {
     try {
       const cid = d.upsertCustomer(draft.phone, t!);
       const online = mode === 'cash' ? 0 : mode === 'online' ? total : total - cashPart; const cash = mode === 'cash' ? total : mode === 'online' ? 0 : cashPart;
-      const b = d.saveBill(kind, { referredBy: draft.carpenterId || undefined, needsCarpenter: draft.needsCarpenter, staffId: me, customerId: cid, tier: t!, cash: kind === 'estimate' ? 0 : cash, online: kind === 'estimate' ? 0 : online,
+      const b = d.saveBill(kind, { referredBy: draft.carpenterId || undefined, needsCarpenter: draft.needsCarpenter, transport: trCharge, staffId: me, customerId: cid, tier: t!, cash: kind === 'estimate' ? 0 : cash, online: kind === 'estimate' ? 0 : online,
         lines: lines.map((l) => ({ pid: l.pid, qty: l.qty, price: price(l.pid), alloc: kind === 'quotation' ? l.alloc : LOCS.map(() => 0), pack: l.pack })) });
       setPay(false); setErr(''); patch({ result: { no: b.no, kind: b.kind, total: b.total, points: b.points, code: b.code, carpenter: carp?.name, needsCarpenter: !!draft.needsCarpenter } });
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not save'); }
@@ -173,6 +174,7 @@ function Bill({ draft, pm }: { draft: Draft; pm: Map<string, Product> }) {
       {canBill && (
         <div className="fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 border-t border-line bg-white/95 p-3 backdrop-blur">
           {err && !pay && <p role="alert" className="mb-2 rounded-xl bg-blush-bg px-3 py-2 text-sm text-blush-fg">{err}</p>}
+          {(d.settings.transport ?? 0) > 0 && <label className="mb-2 flex cursor-pointer items-center gap-2 rounded-xl bg-paper px-3 py-2 text-sm"><input type="checkbox" className="h-4 w-4 accent-black" checked={!!draft.transport} onChange={(e) => patch({ transport: e.target.checked })} />Add transport charge <b className="ml-auto tabular-nums">{money(d.settings.transport ?? 0)}</b></label>}
           <div className="mb-2 flex items-end justify-between"><span className="text-sm text-steel">{lines.length} item{lines.length > 1 ? 's' : ''} · Total</span><b className="font-display text-3xl">{money(total)}</b></div>
           <div className="grid grid-cols-2 gap-2"><button disabled={!lines.length} onClick={() => save('estimate')} className="rounded-2xl border border-black py-3 font-semibold disabled:opacity-40">Save estimate</button>
             <button disabled={!lines.length || shortage || allocBad} onClick={() => { setCashPart(0); setMode('cash'); setErr(''); setPay(true); }} className="rounded-2xl bg-black py-3 font-semibold text-gold-light disabled:opacity-40">Take payment</button></div>

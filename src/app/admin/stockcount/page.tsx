@@ -33,7 +33,7 @@ export default function StockCount() {
   };
   return (
     <div>
-      <ScreenHead title="Stock Count" hint="The only place stock is corrected. Leave a row empty if the count matches.">
+      <ScreenHead title="Physical Stock" hint="The only place stock is corrected. Leave a row empty if the count matches.">
         <select aria-label="Storage place" className="rounded-md border border-line bg-white px-2 py-1.5 text-[13px]" value={loc} onChange={(e) => setLoc(+e.target.value)}>{LOCS.map((l, i) => <option key={l} value={i}>{l}</option>)}</select>
         <KBtn primary k="F9" onClick={post} disabled={!diffs.length}>Post {diffs.length || ''} {diffs.length === 1 ? 'correction' : 'corrections'}</KBtn>
       </ScreenHead>

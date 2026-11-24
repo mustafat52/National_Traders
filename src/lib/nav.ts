@@ -8,6 +8,7 @@ export const NAV: NavItem[] = [
   { href: '/admin/estimates', title: 'Estimates', group: 'Sales', g: 'e', icon: ClipboardCheck, words: 'quotation' },
   { href: '/admin/carpenters', title: 'Carpenters', group: 'Sales', g: 'c', icon: Hammer },
   { href: '/admin/products', title: 'Products', group: 'Stock', g: 'p', icon: Boxes, words: 'items catalogue company category' },
+  { href: '/admin/products/import', title: 'Import Items', group: 'Stock', g: 'm', icon: PackagePlus, words: 'bulk multiple item creation excel csv upload' },
   { href: '/admin/prices', title: 'Price List', group: 'Stock', g: 'i', icon: Tags, words: 'rates purchase price selling' },
   { href: '/admin/stock', title: 'Stock Position', group: 'Stock', g: 'o', icon: Warehouse, words: 'quantity godown inventory' },
   { href: '/admin/stockin', title: 'Stock In', group: 'Stock', g: 's', icon: PackagePlus, words: 'incoming delivery purchase receive' },
@@ -23,3 +24,35 @@ export const NAV: NavItem[] = [
   { href: '/admin/settings', title: 'Settings', group: 'Settings', g: 'x', icon: Settings, words: 'godown places' },
 ];
 export const navByG = (g: string) => NAV.find((n) => n.g === g);
+
+/** The sidebar menu, laid out like the menus the shop already knows: Masters, Transactions, Display, Administration. */
+export interface TreeNode { title: string; href?: string; kids?: TreeNode[] }
+export const TREE: TreeNode[] = [
+  { title: 'Dashboard', href: '/admin' },
+  { title: 'Masters', kids: [
+    { title: 'Item', kids: [{ title: 'Add', href: '/admin/products/new' }, { title: 'Modify / List', href: '/admin/products' }, { title: 'Multiple Item Creation', href: '/admin/products/import' }] },
+    { title: 'Price List', href: '/admin/prices' },
+    { title: 'Customer', href: '/admin/customers' },
+    { title: 'Vendor', href: '/admin/vendors' },
+    { title: 'Carpenter', href: '/admin/carpenters' },
+  ] },
+  { title: 'Transactions', kids: [
+    { title: 'Estimate / Quotation', href: '/admin/estimates' },
+    { title: 'Stock In (Purchase)', href: '/admin/stockin' },
+    { title: 'Stock Transfer', href: '/admin/transfers' },
+    { title: 'Physical Stock', href: '/admin/stockcount' },
+    { title: 'Print Labels', href: '/admin/labels' },
+  ] },
+  { title: 'Display', kids: [
+    { title: 'Sales and Profit', href: '/admin/business' },
+    { title: 'Stock Position', href: '/admin/stock' },
+    { title: 'Low Stock', href: '/admin/lowstock' },
+    { title: 'Reports', href: '/admin/reports' },
+  ] },
+  { title: 'Administration', kids: [
+    { title: 'Staff and Attendance', href: '/admin/staff' },
+    { title: 'Leave Requests', href: '/admin/leaves' },
+    { title: 'Salaries and Payroll', href: '/admin/payroll' },
+    { title: 'Material Centre (Godowns) and Settings', href: '/admin/settings' },
+  ] },
+];

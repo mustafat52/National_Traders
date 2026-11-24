@@ -12,12 +12,12 @@ import { computePay, figuresOf, leaveDays, leaveLocked, monthLabel } from './pay
  * Screens only call these actions / read this state, never mutate data directly.
  */
 export interface Session { role: 'admin' | 'staff'; staffId: string; owner?: string; }
-export interface BillDraft { staffId: string; customerId: string; tier: number; lines: BillLine[]; cash: number; online: number; fromEstimate?: string; referredBy?: string; needsCarpenter?: boolean; }
+export interface BillDraft { staffId: string; customerId: string; tier: number; lines: BillLine[]; cash: number; online: number; fromEstimate?: string; referredBy?: string; needsCarpenter?: boolean; /** transport charge to add to this bill (amount, 0 = none) */ transport?: number; }
 export interface ConvertDraft { estimateId: string; }
 /** A bill being made at the counter. A salesman can keep several open at once (a crowd in the shop) and switch between them. */
 export interface DraftLine { pid: string; qty: number; alloc: number[]; pack?: Pack; }
 export interface DraftResult { no: string; kind: 'estimate' | 'quotation'; total: number; points: number; code: string; carpenter?: string; needsCarpenter?: boolean; }
-export interface Draft { id: string; staffId: string; phone: string; tier: number | null; carpenterId?: string | null; needsCarpenter?: boolean; lines: DraftLine[]; createdAt: string; result?: DraftResult; }
+export interface Draft { id: string; staffId: string; phone: string; tier: number | null; carpenterId?: string | null; needsCarpenter?: boolean; transport?: boolean; lines: DraftLine[]; createdAt: string; result?: DraftResult; }
 /** Present when the delivery came with a vendor bill: creates the bill (money owed) and updates purchase prices. */
 export interface StockInBill { vendorId: string; billNo: string; prices: Record<string, number>; }
 
@@ -43,12 +43,14 @@ interface Actions {
   addVendor: (v: Omit<Data['vendors'][number], 'id'>) => void;
   addPayment: (vendorId: string, amount: number, mode: string) => void;
   updateVendor: (id: string, v: Omit<Vendor, 'id'>) => void;
+  /** Owner only. Changes a customer's name or price list. */
+  updateCustomer: (id: string, patch: { name: string; tier: number }) => void;
   addStockIn: (note: string, lines: { pid: string; qty: number[] }[], bill?: StockInBill) => void;
   upsertCustomer: (phone: string, tier: number) => string;
   saveBill: (kind: 'estimate' | 'quotation', d: BillDraft) => Bill;
   startConvert: (estimateId: string | null) => void;
   /** OWNER ONLY. Turns an open estimate into a paid sale at the prices the owner chose. Points go to the salesman who made the estimate. */
-  convertEstimate: (estimateId: string, choices: { pid: string; price: number; alloc: number[] }[], cash: number, online: number) => Bill;
+  convertEstimate: (estimateId: string, choices: { pid: string; price: number; alloc: number[] }[], cash: number, online: number, transport?: number) => Bill;
   processReturn: (r: { kind: 'sales' | 'damage'; billId: string; staffId: string; lines: { pid: string; qty: number; loc: number }[]; cash: number; online: number }) => void;
   updateSettings: (s: Settings) => void;
   /** Owner only. Saves the list of sticker sizes and which one is in use. */
@@ -182,6 +184,7 @@ export const useStore = create<Store>()(
       /* ---------- vendors & purchases (admin) ---------- */
       addVendor: (v) => set((s) => ({ vendors: [...s.vendors, { ...v, id: uid('V') }] })),
       addPayment: (vendorId, amount, mode) => set((s) => ({ payments: [{ id: uid('VP'), vendorId, date: new Date().toISOString(), amount, mode }, ...s.payments] })),
+      updateCustomer: (id, patch) => { ownerOnly(get()); if (![0, 1, 2, 3].includes(patch.tier)) throw new Error('Choose a price list'); set((s) => ({ customers: s.customers.map((c) => (c.id === id ? { ...c, name: patch.name.trim(), tier: patch.tier } : c)) })); },
             updateVendor: (id, v) => set((s) => ({ vendors: s.vendors.map((x) => (x.id === id ? { ...v, id } : x)) })),
       /**
        * ONE way to add incoming stock. Without `bill` it only raises stock (opening stock, godown receipts, found stock).
@@ -227,7 +230,8 @@ export const useStore = create<Store>()(
       },
       saveBill: (kind, d) => {
         const s = get(); const now = new Date();
-        const total = roundBill(d.lines.reduce((a, l) => a + l.qty * l.price, 0));
+        const tr = Math.max(0, Math.round(d.transport ?? 0));
+        const total = roundBill(d.lines.reduce((a, l) => a + l.qty * l.price, 0) + tr);
         if (!d.lines.length) throw new Error('Add at least one item');
         if (d.fromEstimate && s.session?.role !== 'admin') throw new Error('Only the owner can convert an estimate to a sale');
         if (kind === 'quotation') {
@@ -244,7 +248,7 @@ export const useStore = create<Store>()(
           id: uid('B'), no: `${kind === 'estimate' ? 'EST' : 'QUO'}-${pad(n)}`, kind, code: code(), date: now.toISOString(),
           staffId: d.staffId, customerId: d.customerId, tier: d.tier, lines: d.lines, total,
           cash: kind === 'quotation' ? d.cash : 0, online: kind === 'quotation' ? d.online : 0,
-          points: kind === 'quotation' ? calcPoints(total, s.settings.pointsPer1000) : 0,
+          points: kind === 'quotation' ? calcPoints(total - tr, s.settings.pointsPer1000) : 0, transport: tr || undefined,
           status: kind === 'quotation' ? 'paid' : 'open', fromEstimate: d.fromEstimate,
           convertedBy: d.fromEstimate ? s.session?.staffId : undefined, convertedAt: d.fromEstimate ? now.toISOString() : undefined,
           referredBy: d.referredBy || undefined, needsCarpenter: d.needsCarpenter || undefined,
@@ -261,7 +265,7 @@ export const useStore = create<Store>()(
         return bill;
       },
       startConvert: (estimateId) => set({ convert: estimateId ? { estimateId } : null }),
-      convertEstimate: (estimateId, choices, cash, online) => {
+      convertEstimate: (estimateId, choices, cash, online, transport = 0) => {
         const s = get(); const est = s.bills.find((b) => b.id === estimateId);
         if (s.session?.role !== 'admin') throw new Error('Only the owner can convert an estimate to a sale');
         if (!est || est.kind !== 'estimate') throw new Error('Estimate not found');
@@ -273,7 +277,7 @@ export const useStore = create<Store>()(
           return { pid: c.pid, qty: o.qty, price: Math.round(c.price), alloc: c.alloc, estPrice: o.price, pack: o.pack };
         });
         // Points go to est.staffId: the salesman who made the estimate, not the owner.
-        const nb = get().saveBill('quotation', { referredBy: est.referredBy, needsCarpenter: est.needsCarpenter, staffId: est.staffId, customerId: est.customerId, tier: est.tier, lines, cash, online, fromEstimate: est.id });
+        const nb = get().saveBill('quotation', { referredBy: est.referredBy, needsCarpenter: est.needsCarpenter, staffId: est.staffId, customerId: est.customerId, tier: est.tier, lines, cash, online, fromEstimate: est.id, transport });
         if (est.job) set((st) => ({ bills: st.bills.map((b) => (b.id === nb.id ? { ...b, job: est.job } : b)) }));
         return nb;
       },
